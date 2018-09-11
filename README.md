@@ -1,2 +1,2 @@
 # DLSRL
-deep learning model for semantic role labels
+Group project to improve GPU efficiency.
