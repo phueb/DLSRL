@@ -27,7 +27,7 @@ train_sents, dev_sents, word_dict, label_dict, embeddings = get_srl_data(
 data = TaggerData(config, train_sents, dev_sents, word_dict, label_dict, embeddings)
 
 # model
-model = Model(config, data)  # TODO
+model = Model(config, data)
 
 # train
 sess = tf.Session()
@@ -37,7 +37,7 @@ global_step = 0
 epoch = 0
 train_loss = 0.0
 while epoch < config.max_epochs:
-    for x_batch, y_batch, mask_batch in data.get_batched_tensors():  # TODO use mask?
+    for word_ids_batch, f_ids_batch, y_batch, mask_batch in data.get_batched_tensors():  # TODO use mask?
 
         # print(x_batch)
         # print(y_batch)
@@ -48,15 +48,15 @@ while epoch < config.max_epochs:
         # y is list of vectors with dim [sent_len]
         # mask is list of vectors with dim [sent_len] informing about length of sent
 
-
-        feed_dict = {model.x: x_batch,
+        feed_dict = {model.word_ids: word_ids_batch,
+                     model.feature_ids: f_ids_batch,
                      model.y: y_batch}
         loss = sess.run(model.tf_loss, feed_dict=feed_dict)
         train_loss += loss
         i += 1
         global_step += 1
         if i % PRINT_INTERVAL == 0:
-            print("{} training steps, loss={:.3f}".format(i, train_loss / i))
+            print("{} training steps, loss={}".format(i, train_loss / i))
 
     train_loss = train_loss / i
     print("Epoch {}, steps={}, loss={:.3f}".format(epoch, i, train_loss))

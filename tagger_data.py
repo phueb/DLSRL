@@ -13,7 +13,7 @@ class TaggerData(object):
                  word_dict,
                  label_dict,
                  embeddings):
-        self.max_train_length = config.max_train_length
+        self.max_seq_length = config.max_seq_length
         self.max_dev_length = max([len(s[0]) for s in dev_sents]) if len(dev_sents) > 0 else 0
         self.batch_size = config.batch_size
         self.use_se_marker = config.use_se_marker
@@ -21,8 +21,8 @@ class TaggerData(object):
         self.word_dict = word_dict
         self.label_dict = label_dict
         self.embeddings = embeddings
-        self.train_tensors = [self.tensorize(s, self.max_train_length) for s in train_sents
-                              if len(s[0]) <= self.max_train_length]
+        self.train_tensors = [self.tensorize(s, self.max_seq_length) for s in train_sents
+                              if len(s[0]) <= self.max_seq_length]
         self.dev_tensors = [self.tensorize(s, self.max_dev_length) for s in dev_sents]
 
     def tensorize(self, sentence, max_length):
@@ -34,18 +34,15 @@ class TaggerData(object):
                     such as predicate or supertag features.
             - max_length: The maximum length of sequences, used for padding.
         """
-        x = np.array(sentence[:-1])  # contains feature ids
-
-        print('tensorized')
-        print(x)
-
-        
+        x1 = np.array(sentence[0])
+        x2 = np.array(sentence[1])  # ph: hardcoded predicate feature
         y = np.array(sentence[-1])
         mask = (y >= 0).astype(float)
-        x.resize([x.shape[1], max_length])
+        x1.resize([max_length])
+        x2.resize([max_length])
         y.resize([max_length])
-        mask.resize([max_length])  # mask is used for padding only
-        return x, np.absolute(y), mask
+        mask.resize([max_length])
+        return x1, x2, np.absolute(y), mask
 
     def get_batched_tensors(self, which='train'):  # TODO implement variable sized batches
         if which == 'test':
@@ -66,11 +63,16 @@ class TaggerData(object):
                            for i in range(0, num_tensors, self.batch_size)]
         print("Extracted {} samples and {} batches.".format(num_tensors, len(batched_tensors)))
         for b in batched_tensors:
-            x_batch, y_batch, mask_batch = list(zip(*b))
+            word_id_batch, f_id_batch, y_batch, mask_batch = list(zip(*b))
+
+            # to get x_batch dim= [batch_size, seq_len, 2], x has to be [16,2]
 
             print('batched')
-            print(x_batch)
+            print(np.array(word_id_batch).shape)
+            print(np.array(f_id_batch).shape)
+            print(np.array(y_batch).shape)
+            print(np.array(mask_batch).shape)
 
-            yield np.array(x_batch), np.array(y_batch), np.array(mask_batch)
+            yield np.array(word_id_batch), np.array(f_id_batch), np.array(y_batch), np.array(mask_batch)
 
   
