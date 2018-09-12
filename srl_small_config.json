@@ -1,6 +1,6 @@
 {
   "max_seq_length": 16,
-  "batch_size"   : 64,
+  "batch_size"   : 1,
   "dev_batch_size": 500,
   "features"     : [ "predicate" ],
   "use_se_marker": false,

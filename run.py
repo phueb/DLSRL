@@ -17,11 +17,11 @@ NUM_UNITS = 300
 
 PRINT_INTERVAL = 1
 
-# get config
+# config
 with open(CONFIG_FILE_PATH, 'r') as config_file:
     config = json.load(config_file, object_hook=lambda d: Namespace(**d))
 
-# get data
+# data
 train_sents, dev_sents, word_dict, label_dict, embeddings = get_srl_data(
     config, TRAIN_DATA_PATH, DEV_DATA_PATH, VOCAB_PATH, LABEL_PATH)
 data = TaggerData(config, train_sents, dev_sents, word_dict, label_dict, embeddings)
@@ -38,20 +38,10 @@ epoch = 0
 train_loss = 0.0
 while epoch < config.max_epochs:
     for word_ids_batch, f_ids_batch, y_batch, mask_batch in data.get_batched_tensors():  # TODO use mask?
-
-        # print(x_batch)
-        # print(y_batch)
-        # print(mask_batch)
-        # print()
-
-        # x is list of arrays with dim [sent_len, 2]
-        # y is list of vectors with dim [sent_len]
-        # mask is list of vectors with dim [sent_len] informing about length of sent
-
         feed_dict = {model.word_ids: word_ids_batch,
                      model.feature_ids: f_ids_batch,
                      model.y: y_batch}
-        loss = sess.run(model.tf_loss, feed_dict=feed_dict)
+        loss = sess.run(model.mean_loss, feed_dict=feed_dict)
         train_loss += loss
         i += 1
         global_step += 1
@@ -59,7 +49,7 @@ while epoch < config.max_epochs:
             print("{} training steps, loss={}".format(i, train_loss / i))
 
     train_loss = train_loss / i
-    print("Epoch {}, steps={}, loss={:.3f}".format(epoch, i, train_loss))
+    print("Epoch {}, steps={}, loss={}".format(epoch, i, train_loss))
     i = 0
     epoch += 1
     train_loss = 0.0
