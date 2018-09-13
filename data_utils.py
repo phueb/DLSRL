@@ -71,21 +71,14 @@ def string_sequence_to_ids(str_seq, dictionary, lowercase=False, word2embed=None
     return ids
 
 
-def get_srl_features(sentences, config):
-    feature_names = config.features
+def get_predicate_ids(sentences, config):
     use_se_marker = config.use_se_marker
-
-    features = []
-    for fname in feature_names:
-        if fname == "predicate":
-            offset = int(use_se_marker)
-            f = [[int(i == sent[1] + offset) for i in range(len(sent[0]))] for sent in sentences]
-            features += f
-
-    return features  # ph: features has another dimension for future features
+    offset = int(use_se_marker)
+    predicate_ids = [[int(i == sent[1] + offset) for i in range(len(sent[0]))] for sent in sentences]
+    return predicate_ids
 
 
-def get_srl_data(config, train_data_path, dev_data_path, vocab_path=None, label_path=None):
+def get_data(config, train_data_path, dev_data_path, vocab_path=None, label_path=None):
     use_se_marker = config.use_se_marker
     raw_train_sents = get_srl_sentences(train_data_path, use_se_marker)
     raw_dev_sents = get_srl_sentences(dev_data_path, use_se_marker)
@@ -112,32 +105,34 @@ def get_srl_data(config, train_data_path, dev_data_path, vocab_path=None, label_
         label_dict.set_unknown_token(UNKNOWN_LABEL)
         label_dict.accept_new = False
 
-    # Get tokens and labels
-    train_tokens = [string_sequence_to_ids(sent[0], word_dict, True, word2embed) for sent in raw_train_sents]
-    train_labels = [string_sequence_to_ids(sent[2], label_dict) for sent in raw_train_sents]
+    # train_data
+    train_word_ids = [string_sequence_to_ids(sent[0], word_dict, True, word2embed) for sent in raw_train_sents]
+    train_predicate_ids = get_predicate_ids(raw_train_sents, config)
+    train_label_ids = [string_sequence_to_ids(sent[2], label_dict) for sent in raw_train_sents]
+    train_data = [(w_ids, p_ids, l_ids) for w_ids, p_ids, l_ids in zip(
+        train_word_ids, train_predicate_ids, train_label_ids)]
 
     if label_dict.accept_new:
         label_dict.set_unknown_token(UNKNOWN_LABEL)
         label_dict.accept_new = False
 
-    dev_tokens = [string_sequence_to_ids(sent[0], word_dict, True, word2embed) for sent in raw_dev_sents]
-    dev_labels = [string_sequence_to_ids(sent[2], label_dict) for sent in raw_dev_sents]
+    # dev_data
+    dev_word_ids = [string_sequence_to_ids(sent[0], word_dict, True, word2embed) for sent in raw_dev_sents]
+    dev_label_ids = [string_sequence_to_ids(sent[2], label_dict) for sent in raw_dev_sents]
+    dev_predicate_ids = get_predicate_ids(raw_dev_sents, config)
+    dev_data = [(w_ids, p_ids, l_ids) for w_ids, p_ids, l_ids in zip(
+        dev_word_ids, dev_predicate_ids, dev_label_ids)]
 
-    # Get features
-    train_features = get_srl_features(raw_train_sents, config)
-    dev_features = get_srl_features(raw_dev_sents, config)
-
-    train_sents = [(t, f, l) for t, f, l in zip(train_tokens, train_features, train_labels)]
-    dev_sents = [(t, f, l) for t, f, l in zip(dev_tokens, dev_features, dev_labels)]
+    # TODO don't zip data here, because each data is going to be reformatted again in tensorize - just build big matrix
 
     print("Extracted {} words and {} tags".format(word_dict.size(), label_dict.size()))
-    print("Max training sentence length: {}".format(max([len(s[0]) for s in train_sents])))
-    print("Max development sentence length: {}".format(max([len(s[0]) for s in dev_sents])))
+    print("Max training sentence length: {}".format(max([len(s[0]) for s in train_data])))
+    print("Max development sentence length: {}".format(max([len(s[0]) for s in dev_data])))
 
     embeddings = np.array([word2embed[w] for w in word_dict.idx2str], dtype=np.float32)
-    return (train_sents,
-            dev_sents,
+    return (train_data,
+            dev_data,
             word_dict,
-            label_dict,
+            label_dict.size(),
             embeddings)
             # [word_embedding, None, None]) # TODO this is old code, why None?
