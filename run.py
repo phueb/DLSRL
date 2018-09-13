@@ -2,6 +2,7 @@ import json
 from argparse import Namespace
 import tensorflow as tf
 import time
+from tfvis import Timeline
 
 from data_utils import get_data
 from batcher import Batcher
@@ -13,10 +14,9 @@ DEV_DATA_PATH =  'data/conll05.dev.txt'
 VOCAB_PATH = None
 LABEL_PATH = None
 
+EVALUATE_WHICH = ['train', 'dev']
 LOSS_INTERVAL = 100
-
-# TODO
-# use python library to calculate confusion matrix evaluations
+TFVIS_PATH = None  #'/home/ph'
 
 
 def evaluate(which):
@@ -47,37 +47,52 @@ train_data, dev_data, word_dict, num_labels, embeddings = get_data(
 batcher = Batcher(config, train_data, dev_data)
 model = Model(config, embeddings, num_labels)
 
+
+# profiling
+if TFVIS_PATH:
+    with tf.train.MonitoredSession() as sess:
+        with Timeline() as timeline:
+            w_ids_batch, p_ids_batch, l_ids_batch = next(batcher.get_batched_tensors('train'))
+            feed_dict = {model.word_ids: w_ids_batch,
+                         model.predicate_ids: p_ids_batch,
+                         model.label_ids: l_ids_batch}
+            sess.run(model.update, feed_dict=feed_dict, **timeline.kwargs)
+            print('visualizing timeline at {}...'.format(TFVIS_PATH))
+            timeline.visualize("{}/profile_num_layers={}.html".format(TFVIS_PATH, config.num_layers))
+
 # train
-sess = tf.Session()
-sess.run(tf.global_variables_initializer())
-i = 0
+local_step = 0
 global_step = 0
-epoch = 0
 train_loss = 0.0
 start = time.time()
-while epoch < config.max_epochs:
+with tf.Session() as sess:
+    sess.run(tf.global_variables_initializer())
+    for epoch in range(config.max_epochs):
 
-    # eval
-    for which in ['train', 'dev']:
-        evaluate(which)
+        # eval
+        for which in EVALUATE_WHICH:
+            evaluate(which)
 
-    # train
-    for w_ids_batch, p_ids_batch, l_ids_batch in batcher.get_batched_tensors('train'):
-        feed_dict = {model.word_ids: w_ids_batch,
-                     model.predicate_ids: p_ids_batch,
-                     model.label_ids: l_ids_batch}
-        loss, _ = sess.run([model.mean_loss, model.update], feed_dict=feed_dict)
-        train_loss += loss
-        i += 1
-        global_step += 1
-        if i % LOSS_INTERVAL == 0 or i == 1:
-            print("step {:>3}: loss={:.3f}, min elapsed={:.1f}".format(i, train_loss / i, (time.time() - start) / 60))
+        # train
+        for w_ids_batch, p_ids_batch, l_ids_batch in batcher.get_batched_tensors('train'):
+            feed_dict = {model.word_ids: w_ids_batch,
+                         model.predicate_ids: p_ids_batch,
+                         model.label_ids: l_ids_batch}
+            loss, _ = sess.run([model.mean_loss, model.update],
+                               feed_dict=feed_dict)
+            train_loss += loss
+            local_step += 1
+            global_step += 1
+            if local_step % LOSS_INTERVAL == 0 or local_step == 1:
+                print("step {:>6} (global {:>6}): loss={:.3f}, min elapsed={:.3f}".format(
+                    local_step, global_step, train_loss / local_step, (time.time() - start) / 60))
 
-    print("Completed Epoch {:3}\n".format(epoch))
-    i = 0
-    epoch += 1
-    train_loss = 0.0
-    
+        print("Completed Epoch {:3}\n".format(epoch))
+        local_step = 0
+        train_loss = 0.0
+
+
+
 
 
 
