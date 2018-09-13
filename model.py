@@ -1,7 +1,8 @@
 import tensorflow as tf
-from tensorflow.contrib.rnn import ResidualWrapper, MultiRNNCell, CompiledWrapper, LSTMCell, DropoutWrapper
+from tensorflow.contrib.rnn import ResidualWrapper, MultiRNNCell, LSTMCell, DropoutWrapper
 
 # TODO implement:
+# transform gates
 # orthornormal initialization of weights
 # gradient clipping
 # variational dropout

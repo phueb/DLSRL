@@ -1,6 +1,6 @@
 {
-  "max_seq_length": 100,
-  "train_batch_size"   : 80,
+  "max_seq_length": 96,
+  "train_batch_size"   : 64,
   "dev_batch_size": 512,
   "use_se_marker": false,
 

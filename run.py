@@ -18,9 +18,26 @@ LOSS_INTERVAL = 100
 # TODO
 # use python library to calculate confusion matrix evaluations
 
+
+def evaluate(which):
+    batch_accuracies = []
+    for w_ids_batch, p_ids_batch, l_ids_batch in batcher.get_batched_tensors(which=which):
+        feed_dict = {model.word_ids: w_ids_batch,
+                     model.predicate_ids: p_ids_batch,
+                     model.label_ids: l_ids_batch}
+        [batch_acc] = sess.run([model.accuracy], feed_dict=feed_dict)
+        batch_accuracies.append(batch_acc)
+    print('{} accuracy={:.3f}'.format(which, sum(batch_accuracies) / len(batch_accuracies)))
+
+
 # config
 with open(CONFIG_FILE_PATH, 'r') as config_file:
     config = json.load(config_file, object_hook=lambda d: Namespace(**d))
+print('///// Configs START')
+for k in sorted(config.__dict__):
+    v = vars(config)[k]
+    print('    {:>20}={:<20}'.format(k, v))
+print('///// Configs END')
 
 # data
 train_data, dev_data, word_dict, num_labels, embeddings = get_data(
@@ -40,15 +57,9 @@ train_loss = 0.0
 start = time.time()
 while epoch < config.max_epochs:
 
-    # eval on dev
-    dev_accuracies = []
-    for w_ids_batch, p_ids_batch, l_ids_batch in batcher.get_batched_tensors('dev'):
-        feed_dict = {model.word_ids: w_ids_batch,
-                     model.predicate_ids: p_ids_batch,
-                     model.label_ids: l_ids_batch}
-        [dev_accuracy] = sess.run([model.accuracy], feed_dict=feed_dict)
-        dev_accuracies.append(dev_accuracy)
-    print('Dev accuracy={:.3f}'.format(sum(dev_accuracies) / len(dev_accuracies)))
+    # eval
+    for which in ['train', 'dev']:
+        evaluate(which)
 
     # train
     for w_ids_batch, p_ids_batch, l_ids_batch in batcher.get_batched_tensors('train'):
