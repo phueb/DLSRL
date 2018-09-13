@@ -40,6 +40,7 @@ def get_srl_sentences(filepath, use_se_marker=False):
 
 
 def make_word2embed(filepath):
+    print('Loading embeddings...')
     word_to_embed_dict = dict()
     with open(filepath, 'r') as f:
         for line in f:
@@ -49,7 +50,6 @@ def make_word2embed(filepath):
             word_to_embed_dict[word] = embedding
         f.close()
     embedding_size = int(re.findall('\d+', filepath)[-1])
-    print('Embedding size={}'.format(embedding_size))
     word_to_embed_dict[START_MARKER] = [random.gauss(0, 0.01) for _ in range(embedding_size)]
     word_to_embed_dict[END_MARKER] = [random.gauss(0, 0.01) for _ in range(embedding_size)]
     if UNKNOWN_TOKEN not in word_to_embed_dict:
@@ -106,6 +106,7 @@ def get_data(config, train_data_path, dev_data_path, vocab_path=None, label_path
         label_dict.accept_new = False
 
     # train_data
+    print('Preparing training data ...')
     train_word_ids = [string_sequence_to_ids(sent[0], word_dict, True, word2embed) for sent in raw_train_sents]
     train_predicate_ids = get_predicate_ids(raw_train_sents, config)
     train_label_ids = [string_sequence_to_ids(sent[2], label_dict) for sent in raw_train_sents]
@@ -117,6 +118,7 @@ def get_data(config, train_data_path, dev_data_path, vocab_path=None, label_path
         label_dict.accept_new = False
 
     # dev_data
+    print('Preparing dev data ...')
     dev_word_ids = [string_sequence_to_ids(sent[0], word_dict, True, word2embed) for sent in raw_dev_sents]
     dev_label_ids = [string_sequence_to_ids(sent[2], label_dict) for sent in raw_dev_sents]
     dev_predicate_ids = get_predicate_ids(raw_dev_sents, config)
@@ -129,10 +131,16 @@ def get_data(config, train_data_path, dev_data_path, vocab_path=None, label_path
     print("Max training sentence length: {}".format(max([len(s[0]) for s in train_data])))
     print("Max development sentence length: {}".format(max([len(s[0]) for s in dev_data])))
 
-    embeddings = np.array([word2embed[w] for w in word_dict.idx2str], dtype=np.float32)
+    # resize embeddings to enable residual connections
+    emb_shape1 = config.cell_size -1  # -1 because of predicate_id
+    print('Reshaping embedding dim1 to {}'.format(emb_shape1))
+    embeddings = np.random.normal(0, scale=0.001, size=[word_dict.size(), emb_shape1]).astype(np.float32)
+    for n, w in enumerate(word_dict.idx2str):
+        embedding = word2embed[w]
+        embeddings[n, :len(embedding)] = embedding
+
     return (train_data,
             dev_data,
             word_dict,
             label_dict.size(),
             embeddings)
-            # [word_embedding, None, None]) # TODO this is old code, why None?

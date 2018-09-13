@@ -7,13 +7,16 @@ from data_utils import get_data
 from batcher import Batcher
 from model import Model
 
-CONFIG_FILE_PATH = 'srl_small_config.json'
-TRAIN_DATA_PATH = 'conll05.test.wsj.txt'
-DEV_DATA_PATH = 'sample_sentences.txt'  # TODO change
+CONFIG_FILE_PATH = 'config.json'
+TRAIN_DATA_PATH = 'data/conll05.train.txt'
+DEV_DATA_PATH =  'data/conll05.dev.txt'
 VOCAB_PATH = None
 LABEL_PATH = None
 
-LOSS_INTERVAL = 10
+LOSS_INTERVAL = 100
+
+# TODO
+# use python library to calculate confusion matrix evaluations
 
 # config
 with open(CONFIG_FILE_PATH, 'r') as config_file:
@@ -36,7 +39,19 @@ epoch = 0
 train_loss = 0.0
 start = time.time()
 while epoch < config.max_epochs:
-    for w_ids_batch, p_ids_batch, l_ids_batch, mask_batch in batcher.get_batched_tensors():  # TODO use mask?
+
+    # eval on dev
+    dev_accuracies = []
+    for w_ids_batch, p_ids_batch, l_ids_batch in batcher.get_batched_tensors('dev'):
+        feed_dict = {model.word_ids: w_ids_batch,
+                     model.predicate_ids: p_ids_batch,
+                     model.label_ids: l_ids_batch}
+        [dev_accuracy] = sess.run([model.accuracy], feed_dict=feed_dict)
+        dev_accuracies.append(dev_accuracy)
+    print('Dev accuracy={:.3f}'.format(sum(dev_accuracies) / len(dev_accuracies)))
+
+    # train
+    for w_ids_batch, p_ids_batch, l_ids_batch in batcher.get_batched_tensors('train'):
         feed_dict = {model.word_ids: w_ids_batch,
                      model.predicate_ids: p_ids_batch,
                      model.label_ids: l_ids_batch}
@@ -51,4 +66,9 @@ while epoch < config.max_epochs:
     i = 0
     epoch += 1
     train_loss = 0.0
+    
+
+
+
+    
 
