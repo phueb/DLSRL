@@ -6,9 +6,9 @@ import tensorflow as tf
 import time
 from tfvis import Timeline
 import argparse
-from pycm import ConfusionMatrix
+# from pycm import ConfusionMatrix
 import numpy as np
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.metrics import  f1_score, precision_score, recall_score
 
 from data_utils import get_data
 from batcher import Batcher
@@ -44,16 +44,16 @@ def srl_task(config_file_path):
         nonzero_ids = np.nonzero(a)
         actual = a[nonzero_ids]  # TODO remove zeros? i think zero is a label!
         predicted = p[nonzero_ids]
-        cm = ConfusionMatrix(actual_vector=actual, predict_vector=predicted)
+        # cm = ConfusionMatrix(actual_vector=actual, predict_vector=predicted)
         print('/////////////////////////// EVALUATION')
-        ppvs = np.array([i for i in cm.PPV.values() if i != 'None']).astype(np.float)
-        tprs = np.array([i for i in cm.TPR.values() if i != 'None']).astype(np.float)
-        f1s = np.array([i for i in cm.F1.values() if i != 'None']).astype(np.float)
+        # ppvs = np.array([i for i in cm.PPV.values() if i != 'None']).astype(np.float)
+        # tprs = np.array([i for i in cm.TPR.values() if i != 'None']).astype(np.float)
+        # f1s = np.array([i for i in cm.F1.values() if i != 'None']).astype(np.float)
         print('num total labels={} num nonzero labels={}'.format(len(a), len(actual)))
-        print('PYMC    | precision={:.3f} recall={:.3f} f1={:.3f}'.format(
-            np.mean(ppvs),
-            np.mean(tprs),
-            np.mean(f1s)))  # TODO how to get aggregate f1 score?
+        # print('PYMC    | precision={:.3f} recall={:.3f} f1={:.3f}'.format(
+        #     np.mean(ppvs),
+        #     np.mean(tprs),
+        #     np.mean(f1s)))  # TODO how to get aggregate f1 score?
         print('sklearn | precision={:.3f} recall={:.3f} f1={:.3f}'.format(
             f1_score(a, p, average='macro'),
             precision_score(a, p, average="macro"),
