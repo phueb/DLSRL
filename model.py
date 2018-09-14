@@ -44,7 +44,7 @@ class Model():
             self.predicate_ids = tf.placeholder(tf.float32, [None, None])
             cell_input = tf.concat([x_embedded, tf.expand_dims(self.predicate_ids, -1)], axis=2)
             cell = MultiRNNCell(
-                    [ResidualWrapper(DropoutWrapper(LSTMCell(config.cell_size),
+                    [ResidualWrapper(DropoutWrapper(LSTMCell(config.cell_size),  # TODO use cudnn_rnn?
                                                     variational_recurrent=True,
                                                     dtype=tf.float32,
                                                     input_keep_prob=1.0,

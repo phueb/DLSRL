@@ -1,0 +1,1 @@
+{"max_seq_length": 96, "train_batch_size": 64, "dev_batch_size": 512, "use_se_marker": false, "word_embedding": "glove100", "cell_size": 256, "num_layers": 8, "max_grad_norm": 1.0, "recurrent_dropout_prob": 0.1, "per_layer_dropout": true, "max_epochs": 500, "learning_rate": 0.01, "epsilon": 1e-06}
