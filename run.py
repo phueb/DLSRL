@@ -4,6 +4,9 @@ import tensorflow as tf
 import time
 from tfvis import Timeline
 import argparse
+from pycm import ConfusionMatrix
+import numpy as np
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
 from data_utils import get_data
 from batcher import Batcher
@@ -14,23 +17,47 @@ DEV_DATA_PATH =  'data/conll05.dev.txt'
 VOCAB_PATH = None
 LABEL_PATH = None
 
-EVALUATE_WHICH = ['train', 'dev']
+EVALUATE_WHICH = ['dev']
 LOSS_INTERVAL = 100
 TFVIS_PATH = None  #'/home/ph'
 
 
+# TODO use mask to prevent training on zeros?
+
+
 def srl_task(config_file_path):
     def evaluate(which):
-        batch_accuracies = []
+        batch_predictions = []
+        batch_actuals = []
         for w_ids_batch, p_ids_batch, l_ids_batch in batcher.get_batched_tensors(which=which):
             feed_dict = {model.word_ids: w_ids_batch,
                          model.predicate_ids: p_ids_batch,
                          model.label_ids: l_ids_batch}
-            [batch_acc] = sess.run([model.accuracy], feed_dict=feed_dict)
-            batch_accuracies.append(batch_acc)
-        print('{} accuracy={:.3f}'.format(which, sum(batch_accuracies) / len(batch_accuracies)))
+            batch_pred = sess.run(model.predictions, feed_dict=feed_dict)
+            batch_predictions.append(batch_pred.flatten())
+            batch_actuals.append(l_ids_batch.flatten())
+        # confusion matrix based metrics
+        a = np.concatenate(batch_actuals, axis=0)
+        p = np.concatenate(batch_predictions, axis=0)
+        nonzero_ids = np.nonzero(a)
+        actual = a[nonzero_ids]  # TODO remove zeros? i think zero is a label!
+        predicted = p[nonzero_ids]
+        cm = ConfusionMatrix(actual_vector=actual, predict_vector=predicted)
+        print('/////////////////////////// EVALUATION')
+        ppvs = np.array([i for i in cm.PPV.values() if i != 'None']).astype(np.float)
+        tprs = np.array([i for i in cm.TPR.values() if i != 'None']).astype(np.float)
+        f1s = np.array([i for i in cm.F1.values() if i != 'None']).astype(np.float)
+        print('num total labels={} num nonzero labels={}'.format(len(a), len(actual)))
+        print('PYMC    | precision={:.3f} recall={:.3f} f1={:.3f}'.format(
+            np.mean(ppvs),
+            np.mean(tprs),
+            np.mean(f1s)))  # TODO how to get aggregate f1 score?
+        print('sklearn | precision={:.3f} recall={:.3f} f1={:.3f}'.format(
+            f1_score(a, p, average='macro'),
+            precision_score(a, p, average="macro"),
+            recall_score(a, p, average="macro")))
 
-    # config
+        # config
     with open(config_file_path, 'r') as config_file:
         config = json.load(config_file, object_hook=lambda d: Namespace(**d))
     print('///// Configs START')
@@ -46,7 +73,6 @@ def srl_task(config_file_path):
     # model
     batcher = Batcher(config, train_data, dev_data)
     model = Model(config, embeddings, num_labels)
-
 
     # profiling
     if TFVIS_PATH:

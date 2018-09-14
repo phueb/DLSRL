@@ -40,20 +40,23 @@ class Model():
         #         all_outputs.append(outputs)
         # final_outputs = all_outputs[-1]  # [batch_size, max_seq_len, cell_size]
 
+
+
         with tf.device('/gpu:0'):
             self.predicate_ids = tf.placeholder(tf.float32, [None, None])
             cell_input = tf.concat([x_embedded, tf.expand_dims(self.predicate_ids, -1)], axis=2)
-            cell = MultiRNNCell(
-                    [ResidualWrapper(DropoutWrapper(LSTMCell(config.cell_size),  # TODO use cudnn_rnn?
-                                                    variational_recurrent=True,
-                                                    dtype=tf.float32,
-                                                    input_keep_prob=1.0,
-                                                    output_keep_prob=1.0,
-                                                    state_keep_prob=1.0 - config.recurrent_dropout_prob))
-                     for _ in range(config.num_layers)])
-            final_outputs, _ = tf.nn.dynamic_rnn(cell,
-                                                 cell_input,
-                                                 dtype=tf.float32,
+            with tf.variable_scope('RNN', initializer=tf.orthogonal_initializer()):
+                cell = MultiRNNCell(
+                        [ResidualWrapper(DropoutWrapper(LSTMCell(config.cell_size),
+                                                        variational_recurrent=True,
+                                                        dtype=tf.float32,
+                                                        input_keep_prob=1.0,
+                                                        output_keep_prob=1.0,
+                                                        state_keep_prob=1.0 - config.recurrent_dropout_prob))
+                         for _ in range(config.num_layers)])
+                final_outputs, _ = tf.nn.dynamic_rnn(cell,
+                                                     cell_input,
+                                                     dtype=tf.float32,
                                                  parallel_iterations=PARALLEL_ITERATIONS)
 
             # projection
@@ -68,10 +71,10 @@ class Model():
             self.labels = tf.reshape(self.label_ids, [-1])  # need [shape0]
             self.mean_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits,
                                                                                            labels=self.labels))
-            self.update = tf.train.AdadeltaOptimizer(
-                learning_rate=config.learning_rate, epsilon=config.epsilon).minimize(tf.reduce_mean(self.mean_loss))
+            optimizer = tf.train.AdadeltaOptimizer(learning_rate=config.learning_rate, epsilon=config.epsilon)
+            gradients, variables = zip(*optimizer.compute_gradients(self.mean_loss))
+            gradients, _ = tf.clip_by_global_norm(gradients, config.max_grad_norm)
+            self.update = optimizer.apply_gradients(zip(gradients, variables))
 
-            # accuracy
-            predictions = tf.nn.softmax(self.logits)
-            correct = tf.equal(tf.cast(tf.argmax(predictions, 1), tf.int32), self.labels)
-            self.accuracy = tf.reduce_mean(tf.cast(correct, tf.float32))
+            # for metrics
+            self.predictions = tf.argmax(tf.nn.softmax(self.logits), axis=1)

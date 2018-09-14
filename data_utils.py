@@ -129,7 +129,9 @@ def get_data(config, train_data_path, dev_data_path, vocab_path=None, label_path
 
     print("Extracted {} words and {} tags".format(word_dict.size(), label_dict.size()))
     print("Max training sentence length: {}".format(max([len(s[0]) for s in train_data])))
+    print("Median training sentence length: {}".format(np.median([len(s[0]) for s in train_data])))
     print("Max development sentence length: {}".format(max([len(s[0]) for s in dev_data])))
+    print("Median development sentence length: {}".format(np.median([len(s[0]) for s in dev_data])))
 
     # resize embeddings to enable residual connections
     emb_shape1 = config.cell_size -1  # -1 because of predicate_id
