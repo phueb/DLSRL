@@ -74,7 +74,8 @@ class Model():
             optimizer = tf.train.AdadeltaOptimizer(learning_rate=config.learning_rate, epsilon=config.epsilon)
             gradients, variables = zip(*optimizer.compute_gradients(self.mean_loss))
             gradients, _ = tf.clip_by_global_norm(gradients, config.max_grad_norm)
-            self.update = optimizer.apply_gradients(zip(gradients, variables))
+            # self.update = optimizer.apply_gradients(zip(gradients, variables))
+            self.update = optimizer.minimize(self.mean_loss)
 
             # for metrics
             self.predictions = tf.argmax(tf.nn.softmax(self.logits), axis=1)
