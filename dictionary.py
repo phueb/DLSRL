@@ -19,7 +19,7 @@ class Dictionary(object):
     def add(self, new_str):
         if not new_str in self.str2idx:
             if self.accept_new:
-                self.str2idx[new_str] = len(self.idx2str)
+                self.str2idx[new_str] = len(self.idx2str) + 0  # TODO prevent zero label
                 self.idx2str.append(new_str)
             else:
                 if self.unknown_id is None:

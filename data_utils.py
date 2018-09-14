@@ -125,6 +125,11 @@ def get_data(config, train_data_path, dev_data_path, vocab_path=None, label_path
     dev_data = [(w_ids, p_ids, l_ids) for w_ids, p_ids, l_ids in zip(
         dev_word_ids, dev_predicate_ids, dev_label_ids)]
 
+    # TODO test zero label
+    print('Label dict:')
+    for k, v in label_dict.str2idx.items():
+        print(k, v)
+
     # TODO don't zip data here, because each data is going to be reformatted again in tensorize - just build big matrix
 
     print("Extracted {} words and {} tags".format(word_dict.size(), label_dict.size()))

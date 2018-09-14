@@ -13,6 +13,13 @@ from tensorflow.contrib.rnn import ResidualWrapper, MultiRNNCell, LSTMCell, Drop
 PARALLEL_ITERATIONS = 32
 
 
+def length(sequence):
+    used = tf.sign(tf.reduce_max(tf.abs(sequence), 2))
+    length = tf.reduce_sum(used, 1)
+    length = tf.cast(length, tf.int32)
+    return length
+
+
 class Model():
     def __init__(self, config, embeddings, num_labels):
 
@@ -41,7 +48,6 @@ class Model():
         # final_outputs = all_outputs[-1]  # [batch_size, max_seq_len, cell_size]
 
 
-
         with tf.device('/gpu:0'):
             self.predicate_ids = tf.placeholder(tf.float32, [None, None])
             cell_input = tf.concat([x_embedded, tf.expand_dims(self.predicate_ids, -1)], axis=2)
@@ -56,6 +62,7 @@ class Model():
                          for _ in range(config.num_layers)])
                 final_outputs, _ = tf.nn.dynamic_rnn(cell,
                                                      cell_input,
+                                                     sequence_length=length(cell_input),  # TODO test
                                                      dtype=tf.float32,
                                                  parallel_iterations=PARALLEL_ITERATIONS)
 
@@ -78,3 +85,5 @@ class Model():
 
             # for metrics
             self.predictions = tf.argmax(tf.nn.softmax(self.logits), axis=1)
+
+
