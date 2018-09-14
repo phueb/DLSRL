@@ -42,7 +42,7 @@ def get_srl_sentences(filepath, use_se_marker=False):
 def make_word2embed(filepath):
     print('Loading embeddings...')
     word_to_embed_dict = dict()
-    with open(filepath, 'r') as f:
+    with open(filepath, 'rb') as f:
         for line in f:
             info = line.strip().split()
             word = info[0]
