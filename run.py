@@ -51,7 +51,7 @@ def srl_task(config_file_path):
                     train_loss += loss
                     local_step += 1
                     if local_step % LOSS_INTERVAL == 0 or local_step == 1:
-                        print("step {:>6} epoch {:>3}: loss={:.0f}, epoch sec={:3.0f}, total hrs={:.1f}".format(
+                        print("step {:>6} epoch {:>3}: loss={:1.3f}, epoch sec={:3.0f}, total hrs={:.1f}".format(
                             local_step,
                             epoch,
                             train_loss / local_step,

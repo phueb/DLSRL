@@ -1,5 +1,7 @@
 import tensorflow as tf
 from tensorflow.contrib.rnn import HighwayWrapper, LSTMCell, DropoutWrapper
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variable_scope as vs
 
 PARALLEL_ITERATIONS = 32
 
@@ -15,7 +17,13 @@ def orthonorm(shape, dtype=tf.float32,  # TODO only works for square (recurrent)
     return u
 
 
-def bidirectional_lstm(inputs, num_layers, size, keep_prob, lengths):
+def _reverse(input_, seq_lengths, seq_dim, batch_dim):  # reverses sequences with right-padding correctly
+    return array_ops.reverse_sequence(
+        input=input_, seq_lengths=seq_lengths,
+        seq_dim=seq_dim, batch_dim=batch_dim)
+
+
+def bidirectional_lstms_stacked(inputs, num_layers, size, keep_prob, lengths):
     outputs = inputs
     for layer in range(num_layers // 2):
         print('Layer {}: Creating forward + backward LSTM'.format(layer))
@@ -35,6 +43,43 @@ def bidirectional_lstm(inputs, num_layers, size, keep_prob, lengths):
     return outputs
 
 
+def bidirectional_lstms_interleaved(inputs, num_layers, size, keep_prob, lengths):
+    outputs = inputs
+    for layer in range(num_layers):
+        print('Layer {}: Creating {} LSTM'.format(layer, 'backw.' if layer % 2 else 'forw.'))  # backwards if layer odd
+        with tf.variable_scope('bilstm_{}'.format(layer), reuse=tf.AUTO_REUSE):
+            # cells
+            cell_fw = HighwayWrapper(DropoutWrapper(LSTMCell(size),
+                                                    state_keep_prob=keep_prob))
+            cell_bw = HighwayWrapper(DropoutWrapper(LSTMCell(size),
+                                                    state_keep_prob=keep_prob))
+
+            # forward direction
+            with vs.variable_scope("fw") as fw_scope:
+                output_fw, output_state_fw = tf.nn.dynamic_rnn(cell=cell_fw,
+                                                               inputs=inputs,
+                                                               sequence_length=lengths,
+                                                               scope=fw_scope,
+                                                               dtype=tf.float32)
+
+            # Backward direction
+            with vs.variable_scope("bw") as bw_scope:
+                inputs_reverse = _reverse(inputs, seq_lengths=lengths, seq_dim=1, batch_dim=0)
+                tmp, output_state_bw = tf.nn.dynamic_rnn(cell=cell_bw,
+                                                         inputs=inputs_reverse,
+                                                         sequence_length=lengths,
+                                                         scope=bw_scope,
+                                                         dtype=tf.float32)
+
+        # calc either fw or bw - interleaving is done at graph construction (not runtime)
+        if layer % 2:
+            outputs = _reverse(tmp, seq_lengths=lengths, seq_dim=1, batch_dim=0)
+        else:
+            outputs = output_fw
+
+    return outputs
+
+
 class Model():
     def __init__(self, config, embeddings, num_labels):
 
@@ -49,34 +94,10 @@ class Model():
             self.keep_prob = tf.placeholder(tf.float32, name='keep_prob')
             self.lengths = tf.placeholder(tf.int32, [None])
             inputs = tf.concat([x_embedded, tf.expand_dims(self.predicate_ids, -1)], axis=2)
-            final_outputs = bidirectional_lstm(inputs, config.num_layers, config.cell_size, self.keep_prob, self.lengths)
 
-            # with tf.variable_scope('ortho_inits', initializer=orthonorm):
-            #     self.keep_prob = tf.placeholder(tf.float32, name='keep_prob')
-            #     fw_cells = [DropoutWrapper(LSTMCell(config.cell_size),
-            #                                variational_recurrent=True,
-            #                                dtype=tf.float32,
-            #                                input_keep_prob=1.0,
-            #                                output_keep_prob=1.0,
-            #                                state_keep_prob=self.keep_prob)
-            #                 for _ in range(config.num_layers // 2)]
-            #     bw_cells = [DropoutWrapper(LSTMCell(config.cell_size),  # TODO dropout or residuals first?
-            #                                variational_recurrent=True,
-            #                                dtype=tf.float32,
-            #                                input_keep_prob=1.0,
-            #                                output_keep_prob=1.0,
-            #                                state_keep_prob=self.keep_prob)
-            #                 for _ in range(config.num_layers // 2)]
-            #
-            #     self.lengths = tf.placeholder(tf.int32, [None])
-            #     (final_outputs, _, _) = tf.contrib.rnn.stack_bidirectional_dynamic_rnn(
-            #         cells_fw=fw_cells,
-            #         cells_bw=bw_cells,
-            #         inputs=inputs,
-            #         sequence_length=self.lengths,  # TODO test
-            #         dtype=tf.float32,
-            #         parallel_iterations=PARALLEL_ITERATIONS)
-            #     # final_outputs is depth-concatenated  # TODO add highway connections - but how when outputs are concatenated?
+
+            # final_outputs = bidirectional_lstms_stacked(inputs, config.num_layers, config.cell_size, self.keep_prob, self.lengths)
+            final_outputs = bidirectional_lstms_interleaved(inputs, config.num_layers, config.cell_size, self.keep_prob, self.lengths)
 
             # projection
             shape0 = tf.shape(final_outputs)[0] * tf.shape(final_outputs)[1]  # both batch_size and seq_len are dynamic
