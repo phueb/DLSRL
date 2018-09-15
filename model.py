@@ -1,16 +1,36 @@
 import tensorflow as tf
-from tensorflow.contrib.rnn import ResidualWrapper, MultiRNNCell, LSTMCell, DropoutWrapper
-
-# TODO implement:
-# transform gates
-# orthornormal initialization of weights
-# gradient clipping
-# variational dropout
-# bidirectional
-# highway wrapper - fix input output dimension incompatibility
-# variable sized batches - use tensorflow buckets
+from tensorflow.contrib.rnn import HighwayWrapper, LSTMCell, DropoutWrapper
 
 PARALLEL_ITERATIONS = 32
+
+
+def orthonorm(shape, dtype=tf.float32,  # TODO only works for square (recurrent) weights
+              partition_info=None):  # pylint: disable=unused-argument
+    """Variable initializer that produces a random orthonormal matrix."""
+    if len(shape) != 2 or shape[0] != shape[1]:
+        raise ValueError("Expecting square shape, got %s" % shape)
+    _, u, _ = tf.svd(tf.random_normal(shape, dtype=dtype), full_matrices=True)
+    return u
+
+
+def bidirectional_lstm(inputs, num_layers, size, keep_prob, lengths):
+    outputs = inputs
+    for layer in range(num_layers // 2):
+        print('Layer {}: Creating forward + backward LSTM'.format(layer))
+        with tf.variable_scope('bilstm_{}'.format(layer), reuse=tf.AUTO_REUSE):
+            # highway wrapper implements transform gates - weighted addition of input to output
+            cell_fw = HighwayWrapper(DropoutWrapper(LSTMCell(size),
+                                                    state_keep_prob=keep_prob))
+            cell_bw = HighwayWrapper(DropoutWrapper(LSTMCell(size),
+                                                    state_keep_prob=keep_prob))
+            (output_fw, output_bw), states = tf.nn.bidirectional_dynamic_rnn(cell_fw,
+                                                                             cell_bw,
+                                                                             outputs,
+                                                                             sequence_length=lengths,
+                                                                             dtype=tf.float32)
+            outputs = tf.add(output_fw, output_bw)  # result is [B, T, cell_size]
+
+    return outputs
 
 
 class Model():
@@ -21,44 +41,40 @@ class Model():
             self.word_ids = tf.placeholder(tf.int32, [None, None])
             x_embedded = tf.nn.embedding_lookup(embeddings, self.word_ids)
 
-        # lstm
-        # with tf.device('/gpu:0'):
-        #     all_outputs = []
-        #     for n in range(config.num_layers):
-        #         print('Making layer {}...'.format(n))
-        #         try:
-        #             cell_input = all_outputs[-1]
-        #         except IndexError:
-        #             self.predicate_ids = tf.placeholder(tf.float32, [None, None])
-        #             cell_input = tf.concat([x_embedded, tf.expand_dims(self.predicate_ids, -1)], axis=2)
-        #         # cell = HighwayWrapper(tf.contrib.rnn.LSTMCell(config.cell_size))
-        #         cell = tf.contrib.rnn.LSTMCell(config.cell_size)
-        #         outputs, _ = tf.nn.dynamic_rnn(cell,
-        #                                        cell_input,
-        #                                        dtype=tf.float32,
-        #                                        scope=str(n))
-        #         all_outputs.append(outputs)
-        # final_outputs = all_outputs[-1]  # [batch_size, max_seq_len, cell_size]
-
-
+        # stacked bilstm
         with tf.device('/gpu:0'):
             self.predicate_ids = tf.placeholder(tf.float32, [None, None])
-            cell_input = tf.concat([x_embedded, tf.expand_dims(self.predicate_ids, -1)], axis=2)
-            with tf.variable_scope('RNN', initializer=tf.orthogonal_initializer()):
-                cell = MultiRNNCell(
-                        [ResidualWrapper(DropoutWrapper(LSTMCell(config.cell_size),
-                                                        variational_recurrent=True,
-                                                        dtype=tf.float32,
-                                                        input_keep_prob=1.0,
-                                                        output_keep_prob=1.0,
-                                                        state_keep_prob=1.0 - config.recurrent_dropout_prob))
-                         for _ in range(config.num_layers)])
-                self.lengths = tf.placeholder(tf.int32, [None])
-                final_outputs, _ = tf.nn.dynamic_rnn(cell,
-                                                     cell_input,
-                                                     sequence_length=self.lengths,  # TODO test
-                                                     dtype=tf.float32,
-                                                     parallel_iterations=PARALLEL_ITERATIONS)
+            self.keep_prob = tf.placeholder(tf.float32, name='keep_prob')
+            self.lengths = tf.placeholder(tf.int32, [None])
+            inputs = tf.concat([x_embedded, tf.expand_dims(self.predicate_ids, -1)], axis=2)
+            final_outputs = bidirectional_lstm(inputs, config.num_layers, config.cell_size, self.keep_prob, self.lengths)
+
+            # with tf.variable_scope('ortho_inits', initializer=orthonorm):
+            #     self.keep_prob = tf.placeholder(tf.float32, name='keep_prob')
+            #     fw_cells = [DropoutWrapper(LSTMCell(config.cell_size),
+            #                                variational_recurrent=True,
+            #                                dtype=tf.float32,
+            #                                input_keep_prob=1.0,
+            #                                output_keep_prob=1.0,
+            #                                state_keep_prob=self.keep_prob)
+            #                 for _ in range(config.num_layers // 2)]
+            #     bw_cells = [DropoutWrapper(LSTMCell(config.cell_size),  # TODO dropout or residuals first?
+            #                                variational_recurrent=True,
+            #                                dtype=tf.float32,
+            #                                input_keep_prob=1.0,
+            #                                output_keep_prob=1.0,
+            #                                state_keep_prob=self.keep_prob)
+            #                 for _ in range(config.num_layers // 2)]
+            #
+            #     self.lengths = tf.placeholder(tf.int32, [None])
+            #     (final_outputs, _, _) = tf.contrib.rnn.stack_bidirectional_dynamic_rnn(
+            #         cells_fw=fw_cells,
+            #         cells_bw=bw_cells,
+            #         inputs=inputs,
+            #         sequence_length=self.lengths,  # TODO test
+            #         dtype=tf.float32,
+            #         parallel_iterations=PARALLEL_ITERATIONS)
+            #     # final_outputs is depth-concatenated  # TODO add highway connections - but how when outputs are concatenated?
 
             # projection
             shape0 = tf.shape(final_outputs)[0] * tf.shape(final_outputs)[1]  # both batch_size and seq_len are dynamic
@@ -83,5 +99,4 @@ class Model():
 
             # for metrics
             self.predictions = tf.argmax(tf.nn.softmax(self.logits), axis=1)
-
 

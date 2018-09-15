@@ -96,23 +96,16 @@ def get_data(config, train_data_path, dev_data_path):
     train_label_ids = [string_sequence_to_ids(sent[2], label_dict) for sent in raw_train_sents]
     train_data = [np.array(train_word_ids), np.array(train_predicate_ids), np.array(train_label_ids)]
 
-    if label_dict.accept_new:
-
-        label_dict.accept_new = False
+    label_dict.accept_new = False
+    num_labels = label_dict.size()
 
     # dev_data
     dev_word_ids = [string_sequence_to_ids(sent[0], word_dict, True, word2embed) for sent in raw_dev_sents]
     dev_predicate_ids = get_predicate_ids(raw_dev_sents, config)
     dev_label_ids = [string_sequence_to_ids(sent[2], label_dict) for sent in raw_dev_sents]
-    dev_data = [np.array(dev_word_ids), np.array(dev_predicate_ids), np.array(dev_label_ids)]  # TODO test
+    dev_data = [np.array(dev_word_ids), np.array(dev_predicate_ids), np.array(dev_label_ids)]
 
-    num_labels = label_dict.size()  # TODO make sure this is correct - is softmax shifted over by one?
-
-    # TODO test zero label
-    print('Label dict:')
-    for k, v in label_dict.str2idx.items():
-        print('"{}" has id {}'.format(k, v))
-
+    # print
     print('/////////////////////////////')
     print('Found {:,} training sentences ...'.format(len(raw_train_sents)))
     print('Found {:,} dev sentences ...'.format(len(raw_dev_sents)))

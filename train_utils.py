@@ -29,7 +29,7 @@ def count_zeros_from_end(s):
         return res
 
 
-def get_batches(model, data, batch_size):
+def get_feed_dicts(model, data, batch_size, keep_prob):
     x1, x2, y = shuffle_stack_pad(data, batch_size)
     num_batches = len(x1) // batch_size
     print('Generating {} batches with size {}'.format(num_batches, batch_size))
@@ -40,6 +40,7 @@ def get_batches(model, data, batch_size):
         feed_dict = {model.word_ids: x1_b,
                      model.predicate_ids: x2_b,
                      model.label_ids: y_b,
+                     model.keep_prob: keep_prob,
                      model.lengths: lengths}
         yield feed_dict
 
@@ -48,14 +49,14 @@ def evaluate(config, model, sess, data):
     # predict
     batch_predictions = []
     batch_actuals = []
-    for feed_dict in get_batches(model, data, config.train_batch_size):
+    for feed_dict in get_feed_dicts(model, data, config.dev_batch_size, keep_prob=1.0):
         batch_pred = sess.run(model.predictions, feed_dict=feed_dict)
         batch_predictions.append(batch_pred.flatten())
         batch_actuals.append(feed_dict[model.label_ids].flatten())
     # confusion matrix based metrics
     a = np.concatenate(batch_actuals, axis=0)
     p = np.concatenate(batch_predictions, axis=0)
-    nonzero_ids = np.nonzero(a)
+    nonzero_ids = np.nonzero(a)  # TODO include "O" labels (but not padding)?
     actual = a[nonzero_ids]
     predicted = p[nonzero_ids]
     cm = ConfusionMatrix(actual_vector=actual, predict_vector=predicted)
