@@ -30,8 +30,12 @@ def bidirectional_lstms_stacked(inputs, num_layers, size, keep_prob, lengths):
         with tf.variable_scope('bilstm_{}'.format(layer), reuse=tf.AUTO_REUSE):
             # highway wrapper implements transform gates - weighted addition of input to output
             cell_fw = HighwayWrapper(DropoutWrapper(LSTMCell(size),
+                                                    variational_recurrent=True,
+                                                    dtype=tf.float32,
                                                     state_keep_prob=keep_prob))
             cell_bw = HighwayWrapper(DropoutWrapper(LSTMCell(size),
+                                                    variational_recurrent=True,
+                                                    dtype=tf.float32,
                                                     state_keep_prob=keep_prob))
             (output_fw, output_bw), states = tf.nn.bidirectional_dynamic_rnn(cell_fw,
                                                                              cell_bw,
@@ -47,35 +51,25 @@ def bidirectional_lstms_interleaved(inputs, num_layers, size, keep_prob, lengths
     outputs = inputs
     for layer in range(num_layers):
         print('Layer {}: Creating {} LSTM'.format(layer, 'backw.' if layer % 2 else 'forw.'))  # backwards if layer odd
-        with tf.variable_scope('bilstm_{}'.format(layer), reuse=tf.AUTO_REUSE):
-            # cells
-            cell_fw = HighwayWrapper(DropoutWrapper(LSTMCell(size),
-                                                    state_keep_prob=keep_prob))
-            cell_bw = HighwayWrapper(DropoutWrapper(LSTMCell(size),
-                                                    state_keep_prob=keep_prob))
-
-            # forward direction
-            with vs.variable_scope("fw") as fw_scope:
-                output_fw, output_state_fw = tf.nn.dynamic_rnn(cell=cell_fw,
-                                                               inputs=inputs,
-                                                               sequence_length=lengths,
-                                                               scope=fw_scope,
-                                                               dtype=tf.float32)
-
-            # Backward direction
-            with vs.variable_scope("bw") as bw_scope:
-                inputs_reverse = _reverse(inputs, seq_lengths=lengths, seq_dim=1, batch_dim=0)
-                tmp, output_state_bw = tf.nn.dynamic_rnn(cell=cell_bw,
-                                                         inputs=inputs_reverse,
+        with tf.variable_scope('bilstm_{}'.format(layer)):
+            # cell
+            cell = HighwayWrapper(DropoutWrapper(LSTMCell(size),
+                                                 variational_recurrent=True,
+                                                 dtype=tf.float32,
+                                                 state_keep_prob=keep_prob,))
+            # calc either bw or fw - interleaving is done at graph construction (not runtime)
+            if layer % 2:
+                outputs_reverse = _reverse(outputs, seq_lengths=lengths, seq_dim=1, batch_dim=0)
+                tmp, _ = tf.nn.dynamic_rnn(cell=cell,
+                                                         inputs=outputs_reverse,
                                                          sequence_length=lengths,
-                                                         scope=bw_scope,
                                                          dtype=tf.float32)
-
-        # calc either fw or bw - interleaving is done at graph construction (not runtime)
-        if layer % 2:
-            outputs = _reverse(tmp, seq_lengths=lengths, seq_dim=1, batch_dim=0)
-        else:
-            outputs = output_fw
+                outputs = _reverse(tmp, seq_lengths=lengths, seq_dim=1, batch_dim=0)
+            else:
+                outputs, _ = tf.nn.dynamic_rnn(cell=cell,
+                                               inputs=outputs,
+                                               sequence_length=lengths,
+                                               dtype=tf.float32)
 
     return outputs
 
