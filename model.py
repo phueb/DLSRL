@@ -13,13 +13,6 @@ from tensorflow.contrib.rnn import ResidualWrapper, MultiRNNCell, LSTMCell, Drop
 PARALLEL_ITERATIONS = 32
 
 
-def length(sequence):
-    used = tf.sign(tf.reduce_max(tf.abs(sequence), 2))
-    length = tf.reduce_sum(used, 1)
-    length = tf.cast(length, tf.int32)
-    return length
-
-
 class Model():
     def __init__(self, config, embeddings, num_labels):
 
@@ -60,11 +53,12 @@ class Model():
                                                         output_keep_prob=1.0,
                                                         state_keep_prob=1.0 - config.recurrent_dropout_prob))
                          for _ in range(config.num_layers)])
+                self.lengths = tf.placeholder(tf.int32, [None])
                 final_outputs, _ = tf.nn.dynamic_rnn(cell,
                                                      cell_input,
-                                                     sequence_length=length(cell_input),  # TODO test
+                                                     sequence_length=self.lengths,  # TODO test
                                                      dtype=tf.float32,
-                                                 parallel_iterations=PARALLEL_ITERATIONS)
+                                                     parallel_iterations=PARALLEL_ITERATIONS)
 
             # projection
             shape0 = tf.shape(final_outputs)[0] * tf.shape(final_outputs)[1]  # both batch_size and seq_len are dynamic
@@ -73,11 +67,15 @@ class Model():
             by = tf.get_variable('by', [num_labels])
             self.logits = tf.matmul(final_outputs_2d, wy) + by  # need [shape0, num_labels]
 
-            # update
+            # loss
             self.label_ids = tf.placeholder(tf.int32, [None, None])  # [batch_size, max_seq_len]
-            self.labels = tf.reshape(self.label_ids, [-1])  # need [shape0]
-            self.mean_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits,
-                                                                                           labels=self.labels))
+            label_ids_flat = tf.reshape(self.label_ids, [-1])  # need [shape0]
+            losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits, labels=label_ids_flat)
+            mask = tf.sign(tf.to_float(label_ids_flat))  # requires that there is no zero label (only zero padding)
+            masked_losses = mask * losses
+            self.mean_loss = tf.reduce_mean(masked_losses)  # TODO test
+
+            # update
             optimizer = tf.train.AdadeltaOptimizer(learning_rate=config.learning_rate, epsilon=config.epsilon)
             gradients, variables = zip(*optimizer.compute_gradients(self.mean_loss))
             gradients, _ = tf.clip_by_global_norm(gradients, config.max_grad_norm)
