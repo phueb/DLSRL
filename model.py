@@ -3,6 +3,8 @@ from tensorflow.contrib.rnn import HighwayWrapper, LSTMCell, DropoutWrapper
 
 PARALLEL_ITERATIONS = 32
 
+# TODO visualize graph on tensorboard
+
 
 def orthonorm(shape, dtype=tf.float32,  # TODO only works for square (recurrent) weights
               partition_info=None):  # pylint: disable=unused-argument

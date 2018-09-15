@@ -1,12 +1,1 @@
-{"train_batch_size": 96,
-  "dev_batch_size": 512,
-  "use_se_marker": false,
-  "embed_size": "100",
-  "cell_size": 256,
-  "num_layers": 8,
-  "max_grad_norm": 1.0,
-  "keep_prob": 0.1,
-  "per_layer_dropout": true,
-  "max_epochs": 500,
-  "learning_rate": 1.0,
-  "epsilon": 1e-06}
+{"train_batch_size": 256, "dev_batch_size": 512, "use_se_marker": false, "embed_size": "100", "cell_size": 128, "num_layers": 8, "max_grad_norm": 1.0, "keep_prob": 0.5, "max_epochs": 500, "learning_rate": 1.0, "epsilon": 1e-06}

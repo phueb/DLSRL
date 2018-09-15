@@ -32,37 +32,33 @@ def srl_task(config_file_path):
     train_data, dev_data, word_dict, num_labels, embeddings = get_data(
         config, TRAIN_DATA_PATH, DEV_DATA_PATH)
 
-    # model
-    model = Model(config, embeddings, num_labels)
-
-    # train
-    local_step = 0
-    train_loss = 0.0
-    global_start = time.time()
-    with tf.Session(config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)) as sess:
-        sess.run(tf.global_variables_initializer())
-        for epoch in range(config.max_epochs):
-
-            # eval
-            evaluate(config, model, sess, dev_data)
-
-            # train
-            epoch_start = time.time()
-            for feed_dict in get_feed_dicts(model, train_data, config.train_batch_size, config.keep_prob):
-                loss, _ = sess.run([model.mean_loss, model.update],
-                                   feed_dict=feed_dict)
-                train_loss += loss
-                local_step += 1
-                if local_step % LOSS_INTERVAL == 0 or local_step == 1:
-                    print("step {:>6} epoch {:>3}: loss={:.0f}, epoch sec={:3.0f} total hrs={:.1f}".format(
-                        local_step,
-                        epoch,
-                        train_loss / local_step,
-                        (time.time() - epoch_start),
-                        (time.time() - global_start) / 3600))
-
-            local_step = 0
-            train_loss = 0.0
+    g = tf.Graph()
+    with g.as_default():
+        model = Model(config, embeddings, num_labels)
+        local_step = 0
+        train_loss = 0.0
+        global_start = time.time()
+        with tf.Session(config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)) as sess:
+            sess.run(tf.global_variables_initializer())
+            for epoch in range(config.max_epochs):
+                # eval
+                evaluate(config, model, sess, dev_data)
+                # train
+                epoch_start = time.time()
+                for feed_dict in get_feed_dicts(model, train_data, config.train_batch_size, config.keep_prob):
+                    loss, _ = sess.run([model.mean_loss, model.update],
+                                       feed_dict=feed_dict)
+                    train_loss += loss
+                    local_step += 1
+                    if local_step % LOSS_INTERVAL == 0 or local_step == 1:
+                        print("step {:>6} epoch {:>3}: loss={:.0f}, epoch sec={:3.0f}, total hrs={:.1f}".format(
+                            local_step,
+                            epoch,
+                            train_loss / local_step,
+                            (time.time() - epoch_start),
+                            (time.time() - global_start) / 3600))
+                local_step = 0
+                train_loss = 0.0
 
 
 if __name__ == "__main__":

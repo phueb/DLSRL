@@ -37,9 +37,10 @@ def get_feed_dicts(model, data, batch_size, keep_prob):
                                np.vsplit(x2, num_batches),
                                np.vsplit(y, num_batches)):
         lengths = [len(s) - count_zeros_from_end(s) for s in x1_b]
-        feed_dict = {model.word_ids: x1_b,
-                     model.predicate_ids: x2_b,
-                     model.label_ids: y_b,
+        max_batch_len = np.max(lengths)
+        feed_dict = {model.word_ids: x1_b[:, :max_batch_len],
+                     model.predicate_ids: x2_b[:, :max_batch_len],
+                     model.label_ids: y_b[:, :max_batch_len],
                      model.keep_prob: keep_prob,
                      model.lengths: lengths}
         yield feed_dict
