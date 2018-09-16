@@ -7,7 +7,7 @@ import time
 import argparse
 
 from data_utils import get_data
-from train_utils import get_feed_dicts, evaluate
+from train_utils import get_feed_dicts, evaluate, shuffle_stack_pad
 from model import Model
 
 TRAIN_DATA_PATH = 'data/conll05.train.txt'
@@ -29,12 +29,12 @@ def srl_task(config_file_path):
     print('///// Configs END')
 
     # data
-    train_data, dev_data, word_dict, num_labels, embeddings = get_data(
+    train_data, dev_data, word_dict, label_dict, embeddings = get_data(
         config, TRAIN_DATA_PATH, DEV_DATA_PATH)
 
     g = tf.Graph()
     with g.as_default():
-        model = Model(config, embeddings, num_labels)
+        model = Model(config, embeddings, label_dict.size())
         local_step = 0
         train_loss = 0.0
         global_start = time.time()
@@ -42,12 +42,12 @@ def srl_task(config_file_path):
             sess.run(tf.global_variables_initializer())
             for epoch in range(config.max_epochs):
                 # eval
-                evaluate(config, model, sess, dev_data)
+                evaluate(dev_data, config.dev_batch_size, config, model, sess, epoch, word_dict, label_dict)
                 # train
+                x1, x2, y = shuffle_stack_pad(train_data, config.train_batch_size)
                 epoch_start = time.time()
-                for feed_dict in get_feed_dicts(model, train_data, config.train_batch_size, config.keep_prob):
-                    loss, _ = sess.run([model.mean_loss, model.update],
-                                       feed_dict=feed_dict)
+                for feed_dict in get_feed_dicts(x1, x2, y, model, config.train_batch_size, config.keep_prob):
+                    loss, _ = sess.run([model.mean_loss, model.update], feed_dict=feed_dict)
                     train_loss += loss
                     local_step += 1
                     if local_step % LOSS_INTERVAL == 0 or local_step == 1:

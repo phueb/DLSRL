@@ -3,18 +3,21 @@
 
 
 class Dictionary(object):
-    def __init__(self, unknown_token=None):
+    def __init__(self):
         self.str2idx = {}
         self.idx2str = []
         self.accept_new = True
         self.unknown_token = None
         self.unknown_id = None
-        if unknown_token is not None:
-            self.set_unknown_token(unknown_token)
+        self.padding_token = None
 
     def set_unknown_token(self, unknown_token):
         self.unknown_token = unknown_token
         self.unknown_id = self.add(unknown_token)
+
+    def set_padding_token(self, padding_token):
+        self.padding_token = padding_token
+        self.padding_id = self.add(padding_token)
 
     def add(self, new_str):
         if new_str not in self.str2idx:

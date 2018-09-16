@@ -1,5 +1,4 @@
 import numpy as np
-from pycm import ConfusionMatrix
 from sklearn.metrics import f1_score, precision_score, recall_score
 
 
@@ -9,7 +8,9 @@ def shuffle_stack_pad(data, batch_size):
     :return: zero-padded matrices for each list of shape [num_seqs, max_seq_len]
     """
     shape0 = len(data[1])
-    shape0_adj = shape0 - (shape0 % batch_size)
+    num_excluded = shape0 % batch_size
+    print('Excluding {} sequences due to fixed batch size'.format(num_excluded))
+    shape0_adj = shape0 - num_excluded
     shape1 = np.max([len(i) for i in data[1]])
     mats = [np.zeros((shape0_adj, shape1)).astype(np.int32) for _ in range(3)]
     rand_ids = np.random.choice(shape0, shape0_adj, replace=False)
@@ -17,7 +18,7 @@ def shuffle_stack_pad(data, batch_size):
         for n, rand_id in enumerate(rand_ids):
             seq = sequences[rand_id]
             mat[n, :len(seq)] = seq
-    return mats
+    return mats  # x1, x2, y  # TODO data is intact here
 
 
 def count_zeros_from_end(s):
@@ -29,8 +30,7 @@ def count_zeros_from_end(s):
         return res
 
 
-def get_feed_dicts(model, data, batch_size, keep_prob):
-    x1, x2, y = shuffle_stack_pad(data, batch_size)
+def get_feed_dicts(x1, x2, y, model, batch_size, keep_prob):
     num_batches = len(x1) // batch_size
     print('Generating {} batches with size {}'.format(num_batches, batch_size))
     for x1_b, x2_b, y_b in zip(np.vsplit(x1, num_batches),
@@ -46,32 +46,58 @@ def get_feed_dicts(model, data, batch_size, keep_prob):
         yield feed_dict
 
 
-def evaluate(config, model, sess, data):
+def remove_padding_and_flatten(mat, lengths):
+    result = []
+    for row, length in zip(mat, lengths):
+        included = row[:length]
+        result += included.tolist()
+    return result
+
+
+def evaluate(data, batch_size, config, model, sess, epoch, word_dict, label_dict):
     # predict
     batch_predictions = []
     batch_actuals = []
-    for feed_dict in get_feed_dicts(model, data, config.dev_batch_size, keep_prob=1.0):
+    x1, x2, y = shuffle_stack_pad(data, batch_size)
+    for feed_dict in get_feed_dicts(x1, x2, y, model, config.dev_batch_size, keep_prob=1.0):
         batch_pred = sess.run(model.predictions, feed_dict=feed_dict)
-        batch_predictions.append(batch_pred.flatten())
-        batch_actuals.append(feed_dict[model.label_ids].flatten())
-    # confusion matrix based metrics
+        batch_act = feed_dict[model.label_ids]
+        batch_wid = feed_dict[model.word_ids]
+        lengths = feed_dict[model.lengths]
+        batch_actuals.append(remove_padding_and_flatten(batch_act, lengths))
+        batch_predictions.append(remove_padding_and_flatten(batch_pred, lengths))
+
+        # TODO should words in sentence labeled as "O" receive error information? - right now they don't
+        print([(word_dict.idx2str[w_id], label_dict.idx2str[l_id])
+               for w_id, l_id in zip(remove_padding_and_flatten(batch_wid, lengths)[:100],
+                                     remove_padding_and_flatten(batch_act, lengths)[:100])])
+
+    # calc f1 score
     a = np.concatenate(batch_actuals, axis=0)
     p = np.concatenate(batch_predictions, axis=0)
-    nonzero_ids = np.nonzero(a)  # TODO include "O" labels (but not padding)?
-    actual = a[nonzero_ids]
-    predicted = p[nonzero_ids]
-    cm = ConfusionMatrix(actual_vector=actual, predict_vector=predicted)
+    nonzero_ids = np.nonzero(a)
+    a_no0 = a[nonzero_ids]
+    p_no0 = p[nonzero_ids]
+
+    # what is model predicting?
+    for i, j in zip(a[:100], p[:100]):
+        print('a="{}", p="{}"'.format(i, j))
+
     # print
-    print('/////////////////////////// EVALUATION')
-    ppvs = np.array([i for i in cm.PPV.values() if i != 'None']).astype(np.float)
-    tprs = np.array([i for i in cm.TPR.values() if i != 'None']).astype(np.float)
-    f1s = np.array([i for i in cm.F1.values() if i != 'None']).astype(np.float)
-    print('num total labels={} num nonzero labels={}'.format(len(a), len(actual)))
-    print('PYMC    | precision={:.3f} recall={:.3f} f1={:.3f}'.format(
-        np.mean(ppvs),
-        np.mean(tprs),
-        np.mean(f1s)))
-    print('sklearn | precision={:.3f} recall={:.3f} f1={:.3f}'.format(
-        f1_score(a, p, average='macro'),
-        precision_score(a, p, average="macro"),
-        recall_score(a, p, average="macro")))  # TODO how to get aggregate f1 score?
+    print('/////////////////////////// f1 EVALUATION START')
+    print('num no-pad labels={:,} num non-zero labels={:,}'.format(len(a), len(a_no0)))
+    print_f1(epoch, 'no-pad  ', 'macro', a, p)
+    print_f1(epoch, 'no-pad  ', 'micro', a, p)
+    print_f1(epoch, 'no-zero ', 'macro', a_no0, p_no0)
+    print_f1(epoch, 'no-zero ', 'micro', a_no0, p_no0)
+    print('/////////////////////////// f1 EVALUATION END ')
+
+
+def print_f1(epoch, labels, method, a, p):
+    print('epoch {:>3} labels={} method={} | p={:.2f} r={:.2f} f1={:.2f}'.format(
+        epoch,
+        labels,
+        method,
+        precision_score(a, p, average=method),
+        recall_score(a, p, average=method),
+        f1_score(a, p, average=method)))  # TODO which is conll script using?

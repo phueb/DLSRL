@@ -1,7 +1,6 @@
 import tensorflow as tf
 from tensorflow.contrib.rnn import HighwayWrapper, LSTMCell, DropoutWrapper
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import variable_scope as vs
 
 PARALLEL_ITERATIONS = 32
 
@@ -56,14 +55,14 @@ def bidirectional_lstms_interleaved(inputs, num_layers, size, keep_prob, lengths
             cell = HighwayWrapper(DropoutWrapper(LSTMCell(size),
                                                  variational_recurrent=True,
                                                  dtype=tf.float32,
-                                                 state_keep_prob=keep_prob,))
+                                                 state_keep_prob=keep_prob))
             # calc either bw or fw - interleaving is done at graph construction (not runtime)
             if layer % 2:
                 outputs_reverse = _reverse(outputs, seq_lengths=lengths, seq_dim=1, batch_dim=0)
                 tmp, _ = tf.nn.dynamic_rnn(cell=cell,
-                                                         inputs=outputs_reverse,
-                                                         sequence_length=lengths,
-                                                         dtype=tf.float32)
+                                           inputs=outputs_reverse,
+                                           sequence_length=lengths,
+                                           dtype=tf.float32)
                 outputs = _reverse(tmp, seq_lengths=lengths, seq_dim=1, batch_dim=0)
             else:
                 outputs, _ = tf.nn.dynamic_rnn(cell=cell,
@@ -89,9 +88,12 @@ class Model():
             self.lengths = tf.placeholder(tf.int32, [None])
             inputs = tf.concat([x_embedded, tf.expand_dims(self.predicate_ids, -1)], axis=2)
 
-
-            # final_outputs = bidirectional_lstms_stacked(inputs, config.num_layers, config.cell_size, self.keep_prob, self.lengths)
-            final_outputs = bidirectional_lstms_interleaved(inputs, config.num_layers, config.cell_size, self.keep_prob, self.lengths)
+            if config.architecture == 'stacked':
+                final_outputs = bidirectional_lstms_stacked(inputs, config.num_layers, config.cell_size, self.keep_prob, self.lengths)
+            elif config.architecture  == 'interleaved':
+                final_outputs = bidirectional_lstms_interleaved(inputs, config.num_layers, config.cell_size, self.keep_prob, self.lengths)
+            else:
+                raise AttributeError('Invalid arg to "architecture"')
 
             # projection
             shape0 = tf.shape(final_outputs)[0] * tf.shape(final_outputs)[1]  # both batch_size and seq_len are dynamic
@@ -106,7 +108,7 @@ class Model():
             losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits, labels=label_ids_flat)
             mask = tf.sign(tf.to_float(label_ids_flat))  # requires that there is no zero label (only zero padding)
             masked_losses = mask * losses
-            self.mean_loss = tf.reduce_mean(masked_losses)  # TODO test
+            self.mean_loss = tf.reduce_mean(masked_losses)  # TODO do not mask zero label - make 2d mask in numpy, then flatten and feed into graph
 
             # update
             optimizer = tf.train.AdadeltaOptimizer(learning_rate=config.learning_rate, epsilon=config.epsilon)
@@ -115,5 +117,5 @@ class Model():
             self.update = optimizer.apply_gradients(zip(gradients, variables))
 
             # for metrics
-            self.predictions = tf.argmax(tf.nn.softmax(self.logits), axis=1)
+            self.predictions = tf.reshape(tf.argmax(tf.nn.softmax(self.logits), axis=1), tf.shape(self.label_ids))
 

@@ -11,15 +11,17 @@ WORD_EMBEDDINGS = { "50":  'glove.6B.50d.txt',
 START_MARKER  = '<S>'
 END_MARKER    = '</S>'
 UNKNOWN_TOKEN = '*UNKNOWN*'
+PADDING_TOKEN = '*PAD*'
 
 
-def get_sentences_from_file(filepath, use_se_marker=False):
-    """ Read tokenized SRL sentences from file.
+def get_propositions_from_file(filepath, use_se_marker=False):
+    """
+    Read tokenized propositions from file.
       File format: {predicate_id} [word0, word1 ...] ||| [label0, label1 ...]
       Return:
-        A list of sentences, with structure: [[words], predicate, [labels]]
+        A list with elements of structure [[words], predicate, [labels]]
     """
-    sentences = []
+    propositions = []
     with open(filepath) as f:
         for line in f.readlines():
             inputs = line.strip().split('|||')
@@ -34,8 +36,8 @@ def get_sentences_from_file(filepath, use_se_marker=False):
             else:
                 words = lefthand_input[1:]
                 labels = righthand_input
-            sentences.append((words, predicate, labels))
-    return sentences
+            propositions.append((words, predicate, labels))
+    return propositions
 
 
 def make_word2embed(filepath):
@@ -49,10 +51,12 @@ def make_word2embed(filepath):
     word_to_embed_dict[END_MARKER] = [random.gauss(0, 0.01) for _ in range(embedding_size)]
     if UNKNOWN_TOKEN not in word_to_embed_dict:
         word_to_embed_dict[UNKNOWN_TOKEN] = [random.gauss(0, 0.01) for _ in range(embedding_size)]
+    if PADDING_TOKEN not in word_to_embed_dict:
+        word_to_embed_dict[PADDING_TOKEN] = [random.gauss(0, 0.01) for _ in range(embedding_size)]
     return word_to_embed_dict
 
 
-def string_sequence_to_ids(str_seq, dictionary, lowercase=False, word2embed=None):
+def words_to_ids(str_seq, dictionary, lowercase=False, word2embed=None):
     ids = []
     for s in str_seq:
         if s is None:
@@ -66,49 +70,55 @@ def string_sequence_to_ids(str_seq, dictionary, lowercase=False, word2embed=None
     return ids
 
 
-def get_predicate_ids(sentences, config):
+def get_predicate_ids(propositions, config):
     use_se_marker = config.use_se_marker
     offset = int(use_se_marker)
-    predicate_ids = [[int(i == sent[1] + offset) for i in range(len(sent[0]))] for sent in sentences]
+    predicate_ids = [[int(i == p[1] + offset) for i in range(len(p[0]))] for p in propositions]
     return predicate_ids
 
 
 def get_data(config, train_data_path, dev_data_path):
     # read sentences from file
     use_se_marker = config.use_se_marker
-    raw_train_sents = get_sentences_from_file(train_data_path, use_se_marker)
-    raw_dev_sents = get_sentences_from_file(dev_data_path, use_se_marker)
+    raw_train_props = get_propositions_from_file(train_data_path, use_se_marker)
+    raw_dev_props = get_propositions_from_file(dev_data_path, use_se_marker)
     word2embed = make_word2embed(WORD_EMBEDDINGS[config.embed_size])
 
-    # prepare word dictionary.
-    word_dict = Dictionary(unknown_token=UNKNOWN_TOKEN)  # do not add words from test data to word_dict
+    # TODO data is correct until here
+
+    # prepare word dictionary
+    word_dict = Dictionary()  # do not add words from test data to word_dict
+    word_dict.set_padding_token(PADDING_TOKEN)  # must be first to get zero id
+    word_dict.set_unknown_token(UNKNOWN_TOKEN)
     if use_se_marker:
         word_dict.add(START_MARKER)
         word_dict.add(END_MARKER)
 
-    # prepare label dictionary.
+    # prepare label dictionary
     label_dict = Dictionary()
     label_dict.set_unknown_token('O')  # set this first to guarantee id of zero
 
     # train_data
-    train_word_ids = [string_sequence_to_ids(sent[0], word_dict, True, word2embed) for sent in raw_train_sents]
-    train_predicate_ids = get_predicate_ids(raw_train_sents, config)
-    train_label_ids = [string_sequence_to_ids(sent[2], label_dict) for sent in raw_train_sents]
-    train_data = [np.array(train_word_ids), np.array(train_predicate_ids), np.array(train_label_ids)]
+    train_word_ids = [words_to_ids(p[0], word_dict, True, word2embed) for p in raw_train_props]
+    train_predicate_ids = get_predicate_ids(raw_train_props, config)
+    train_label_ids = [words_to_ids(p[2], label_dict) for p in raw_train_props]
+    train_data = [train_word_ids, train_predicate_ids, train_label_ids]
+
+    # TODO data is correct until here
 
     label_dict.accept_new = False
     num_labels = label_dict.size()
 
     # dev_data
-    dev_word_ids = [string_sequence_to_ids(sent[0], word_dict, True, word2embed) for sent in raw_dev_sents]
-    dev_predicate_ids = get_predicate_ids(raw_dev_sents, config)
-    dev_label_ids = [string_sequence_to_ids(sent[2], label_dict) for sent in raw_dev_sents]
-    dev_data = [np.array(dev_word_ids), np.array(dev_predicate_ids), np.array(dev_label_ids)]
+    dev_word_ids = [words_to_ids(p[0], word_dict, True, word2embed) for p in raw_dev_props]
+    dev_predicate_ids = get_predicate_ids(raw_dev_props, config)
+    dev_label_ids = [words_to_ids(p[2], label_dict) for p in raw_dev_props]
+    dev_data = [dev_word_ids, dev_predicate_ids, dev_label_ids]
 
     # print
     print('/////////////////////////////')
-    print('Found {:,} training sentences ...'.format(len(raw_train_sents)))
-    print('Found {:,} dev sentences ...'.format(len(raw_dev_sents)))
+    print('Found {:,} training propositions ...'.format(len(raw_train_props)))
+    print('Found {:,} dev propositions ...'.format(len(raw_dev_props)))
     print("Extracted {:,} train+dev words and {:,} tags".format(word_dict.size(), num_labels))
     for which, data in zip(['train', 'dev'], [train_data, dev_data]):
         print("Max {} sentence length: {}".format(which, np.max([len(i) for i in data[0]])))
@@ -127,5 +137,5 @@ def get_data(config, train_data_path, dev_data_path):
     return (train_data,
             dev_data,
             word_dict,
-            num_labels,
+            label_dict,
             embeddings)
