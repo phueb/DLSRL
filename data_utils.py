@@ -84,8 +84,6 @@ def get_data(config, train_data_path, dev_data_path):
     raw_dev_props = get_propositions_from_file(dev_data_path, use_se_marker)
     word2embed = make_word2embed(WORD_EMBEDDINGS[config.embed_size])
 
-    # TODO data is correct until here
-
     # prepare word dictionary
     word_dict = Dictionary()  # do not add words from test data to word_dict
     word_dict.set_padding_token(PADDING_TOKEN)  # must be first to get zero id
@@ -96,6 +94,7 @@ def get_data(config, train_data_path, dev_data_path):
 
     # prepare label dictionary
     label_dict = Dictionary()
+    # TODO add padding token first (before unknon token) which only gets mapped to *PADDING*
     label_dict.set_unknown_token('O')  # set this first to guarantee id of zero
 
     # train_data
@@ -103,8 +102,6 @@ def get_data(config, train_data_path, dev_data_path):
     train_predicate_ids = get_predicate_ids(raw_train_props, config)
     train_label_ids = [words_to_ids(p[2], label_dict) for p in raw_train_props]
     train_data = [train_word_ids, train_predicate_ids, train_label_ids]
-
-    # TODO data is correct until here
 
     label_dict.accept_new = False
     num_labels = label_dict.size()

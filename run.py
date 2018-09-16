@@ -13,8 +13,21 @@ from model import Model
 TRAIN_DATA_PATH = 'data/conll05.train.txt'
 DEV_DATA_PATH =  'data/conll05.dev.txt'
 
+TENSORBOARD_DIR = 'tb'
+
 LOSS_INTERVAL = 100
 TFVIS_PATH = '/home/ph'
+
+
+def export_to_tensorboard(model, sess, feed_dict, global_step):
+    run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+    run_metadata = tf.RunMetadata()
+    summary = sess.run(model.merged1,
+                       feed_dict=feed_dict,
+                       options=run_options,
+                       run_metadata=run_metadata)
+    model.train_writer.add_run_metadata(run_metadata, 'step%03d' % global_step)
+    model.train_writer.add_summary(summary, global_step)
 
 
 def srl_task(config_file_path):
@@ -32,33 +45,37 @@ def srl_task(config_file_path):
     train_data, dev_data, word_dict, label_dict, embeddings = get_data(
         config, TRAIN_DATA_PATH, DEV_DATA_PATH)
 
+    epoch_step = 0
+    global_step = 0
+    epoch_loss_sum = 0.0
+    global_start = time.time()
     g = tf.Graph()
     with g.as_default():
-        model = Model(config, embeddings, label_dict.size())
-        local_step = 0
-        train_loss = 0.0
-        global_start = time.time()
-        with tf.Session(config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)) as sess:
-            sess.run(tf.global_variables_initializer())
-            for epoch in range(config.max_epochs):
-                # eval
-                evaluate(dev_data, config.dev_batch_size, config, model, sess, epoch, word_dict, label_dict)
-                # train
-                x1, x2, y = shuffle_stack_pad(train_data, config.train_batch_size)
-                epoch_start = time.time()
-                for feed_dict in get_feed_dicts(x1, x2, y, model, config.train_batch_size, config.keep_prob):
-                    loss, _ = sess.run([model.mean_loss, model.update], feed_dict=feed_dict)
-                    train_loss += loss
-                    local_step += 1
-                    if local_step % LOSS_INTERVAL == 0 or local_step == 1:
-                        print("step {:>6} epoch {:>3}: loss={:1.3f}, epoch sec={:3.0f}, total hrs={:.1f}".format(
-                            local_step,
-                            epoch,
-                            train_loss / local_step,
-                            (time.time() - epoch_start),
-                            (time.time() - global_start) / 3600))
-                local_step = 0
-                train_loss = 0.0
+        model = Model(config, embeddings, label_dict.size(), g)
+        sess = tf.Session(graph=g, config=tf.ConfigProto(allow_soft_placement=True,
+                                                         log_device_placement=False))
+        sess.run(tf.global_variables_initializer())
+        for epoch in range(config.max_epochs):
+            # eval
+            evaluate(dev_data, model, sess, epoch, global_step, word_dict, label_dict)
+            # train
+            x1, x2, y = shuffle_stack_pad(train_data, config.train_batch_size)
+            epoch_start = time.time()
+            for feed_dict in get_feed_dicts(x1, x2, y, model, config.train_batch_size, config.keep_prob):
+                if epoch_step % LOSS_INTERVAL == 0:
+                    export_to_tensorboard(model, sess, feed_dict, global_step)
+                    print("step {:>6} epoch {:>3}: loss={:1.3f}, epoch sec={:3.0f}, total hrs={:.1f}".format(
+                        epoch_step,
+                        epoch,
+                        epoch_loss_sum / max(epoch_step, 1),
+                        (time.time() - epoch_start),
+                        (time.time() - global_start) / 3600))
+                loss, _ = sess.run([model.nonzero_mean_loss, model.update], feed_dict=feed_dict)
+                epoch_loss_sum += loss
+                epoch_step += 1
+                global_step += 1
+            epoch_step = 0
+            epoch_loss_sum = 0.0
 
 
 if __name__ == "__main__":

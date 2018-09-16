@@ -1,6 +1,7 @@
 import tensorflow as tf
 from tensorflow.contrib.rnn import HighwayWrapper, LSTMCell, DropoutWrapper
 from tensorflow.python.ops import array_ops
+from socket import gethostname
 
 PARALLEL_ITERATIONS = 32
 
@@ -49,15 +50,16 @@ def bidirectional_lstms_stacked(inputs, num_layers, size, keep_prob, lengths):
 def bidirectional_lstms_interleaved(inputs, num_layers, size, keep_prob, lengths):
     outputs = inputs
     for layer in range(num_layers):
-        print('Layer {}: Creating {} LSTM'.format(layer, 'backw.' if layer % 2 else 'forw.'))  # backwards if layer odd
-        with tf.variable_scope('bilstm_{}'.format(layer)):
+        direction = 'backw.' if layer % 2 else 'forw.'
+        print('Layer {}: Creating {} LSTM'.format(layer, direction))  # backwards if layer odd
+        with tf.variable_scope('{}_lstm_{}'.format(direction, layer)):
             # cell
             cell = HighwayWrapper(DropoutWrapper(LSTMCell(size),
                                                  variational_recurrent=True,
                                                  dtype=tf.float32,
                                                  state_keep_prob=keep_prob))
             # calc either bw or fw - interleaving is done at graph construction (not runtime)
-            if layer % 2:
+            if direction == 'backw.':
                 outputs_reverse = _reverse(outputs, seq_lengths=lengths, seq_dim=1, batch_dim=0)
                 tmp, _ = tf.nn.dynamic_rnn(cell=cell,
                                            inputs=outputs_reverse,
@@ -74,19 +76,19 @@ def bidirectional_lstms_interleaved(inputs, num_layers, size, keep_prob, lengths
 
 
 class Model():
-    def __init__(self, config, embeddings, num_labels):
+    def __init__(self, config, embeddings, num_labels, g):
 
         # embedding
         with tf.device('/cpu:0'):
-            self.word_ids = tf.placeholder(tf.int32, [None, None])
-            x_embedded = tf.nn.embedding_lookup(embeddings, self.word_ids)
+            self.word_ids = tf.placeholder(tf.int32, [None, None], name='word_ids')
+            embedded = tf.nn.embedding_lookup(embeddings, self.word_ids, name='embedded')
 
         # stacked bilstm
         with tf.device('/gpu:0'):
-            self.predicate_ids = tf.placeholder(tf.float32, [None, None])
+            self.predicate_ids = tf.placeholder(tf.float32, [None, None], name='predicate_ids')
             self.keep_prob = tf.placeholder(tf.float32, name='keep_prob')
-            self.lengths = tf.placeholder(tf.int32, [None])
-            inputs = tf.concat([x_embedded, tf.expand_dims(self.predicate_ids, -1)], axis=2)
+            self.lengths = tf.placeholder(tf.int32, [None], name='lengths')
+            inputs = tf.concat([embedded, tf.expand_dims(self.predicate_ids, -1)], axis=2, name='lstm_inputs')
 
             if config.architecture == 'stacked':
                 final_outputs = bidirectional_lstms_stacked(inputs, config.num_layers, config.cell_size, self.keep_prob, self.lengths)
@@ -100,22 +102,58 @@ class Model():
             final_outputs_2d = tf.reshape(final_outputs, [shape0, config.cell_size])  # need [shape0, cell_size]
             wy = tf.get_variable('Wy', [config.cell_size, num_labels])
             by = tf.get_variable('by', [num_labels])
-            self.logits = tf.matmul(final_outputs_2d, wy) + by  # need [shape0, num_labels]
+            logits = tf.nn.xw_plus_b(final_outputs_2d, wy, by, name='logits')  # need [shape0, num_labels]
 
             # loss
-            self.label_ids = tf.placeholder(tf.int32, [None, None])  # [batch_size, max_seq_len]
+            self.label_ids = tf.placeholder(tf.int32, [None, None], name='label_ids')  # [batch_size, max_seq_len]
             label_ids_flat = tf.reshape(self.label_ids, [-1])  # need [shape0]
-            losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits, labels=label_ids_flat)
-            mask = tf.sign(tf.to_float(label_ids_flat))  # requires that there is no zero label (only zero padding)
-            masked_losses = mask * losses
-            self.mean_loss = tf.reduce_mean(masked_losses)  # TODO do not mask zero label - make 2d mask in numpy, then flatten and feed into graph
+
+
+            # TODO test
+            mask = tf.greater(label_ids_flat, 0, 'mask')
+            nonzero_label_ids_flat = tf.boolean_mask(label_ids_flat, mask, name='nonzero_label_ids_flat')  # removes elements
+            nonzero_logits = tf.boolean_mask(logits, mask, name='nonzero_logits')
+            nonzero_losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=nonzero_logits,
+                                                                            labels=nonzero_label_ids_flat,
+                                                                            name='nonzero_losses')
+            losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits,
+                                                                    labels=label_ids_flat,
+                                                                    name='losses')
+            self.nonzero_mean_loss = tf.reduce_mean(nonzero_losses, name='nonzero_mean_loss')
+            self.mean_loss = tf.reduce_mean(losses, name='mean_loss')
+            # TODO do not mask zero label - make 2d mask in numpy, then flatten and feed into graph
 
             # update
             optimizer = tf.train.AdadeltaOptimizer(learning_rate=config.learning_rate, epsilon=config.epsilon)
-            gradients, variables = zip(*optimizer.compute_gradients(self.mean_loss))
+            gradients, variables = zip(*optimizer.compute_gradients(self.nonzero_mean_loss))
             gradients, _ = tf.clip_by_global_norm(gradients, config.max_grad_norm)
-            self.update = optimizer.apply_gradients(zip(gradients, variables))
+            self.update = optimizer.apply_gradients(zip(gradients, variables), name='update')
 
-            # for metrics
-            self.predictions = tf.reshape(tf.argmax(tf.nn.softmax(self.logits), axis=1), tf.shape(self.label_ids))
+            # predictions
+            predicted_label_ids = tf.cast(tf.argmax(tf.nn.softmax(logits), axis=1), tf.int32)
+            nonzero_predicted_label_ids = tf.cast(tf.argmax(tf.nn.softmax(nonzero_logits), axis=1), tf.int32)
+            self.predictions = tf.reshape(predicted_label_ids, tf.shape(self.label_ids))
+
+            # tensorboard
+            tf.summary.scalar('accuracy', tf.reduce_mean(tf.cast(tf.equal(predicted_label_ids,
+                                                                          label_ids_flat), tf.float32)))
+            tf.summary.scalar('nonzero_accuracy', tf.reduce_mean(tf.cast(tf.equal(nonzero_predicted_label_ids,
+                                                                                  nonzero_label_ids_flat), tf.float32)))
+            tf.summary.scalar('mean_xe', self.nonzero_mean_loss)
+            tf.summary.scalar('nonzero_mean_xe', self.nonzero_mean_loss)
+            self.merged1 = tf.summary.merge_all()
+            self.train_writer = tf.summary.FileWriter('tb/' + gethostname(), g)
+
+            # confusion matrix
+            nonzero_cm = tf.confusion_matrix(nonzero_label_ids_flat, nonzero_predicted_label_ids)
+            cm = tf.confusion_matrix(label_ids_flat, predicted_label_ids)  # TODO test
+            size = tf.shape(cm)[0]
+            nonzero_cm_image = tf.summary.image('nonzero_cm', tf.reshape(tf.cast(nonzero_cm, tf.float32),
+                                                                              [1, size, size, 1]))  # needs 4d
+            cm_image = tf.summary.image('cm', tf.reshape(tf.cast(cm, tf.float32),
+                                                              [1, size, size, 1]))
+            self.merged2 = tf.summary.merge([nonzero_cm_image, cm_image])
+
+
+
 

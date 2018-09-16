@@ -54,12 +54,20 @@ def remove_padding_and_flatten(mat, lengths):
     return result
 
 
-def evaluate(data, batch_size, config, model, sess, epoch, word_dict, label_dict):
-    # predict
+def evaluate(data, model, sess, epoch, global_step, word_dict, label_dict, batch_size=None):
+    # make dev data
     batch_predictions = []
     batch_actuals = []
+    if batch_size is None:
+        batch_size = len(data[0])
+        assert batch_size < 4096  # keep memory low when evaluating complete data (no batching)
     x1, x2, y = shuffle_stack_pad(data, batch_size)
-    for feed_dict in get_feed_dicts(x1, x2, y, model, config.dev_batch_size, keep_prob=1.0):
+    # eval dev data
+    for feed_dict in get_feed_dicts(x1, x2, y, model, batch_size, keep_prob=1.0):
+        # export confusion matrix
+        summary = sess.run(model.merged2, feed_dict=feed_dict)
+        model.train_writer.add_summary(summary, global_step)
+        # get predictions
         batch_pred = sess.run(model.predictions, feed_dict=feed_dict)
         batch_act = feed_dict[model.label_ids]
         batch_wid = feed_dict[model.word_ids]
@@ -68,9 +76,9 @@ def evaluate(data, batch_size, config, model, sess, epoch, word_dict, label_dict
         batch_predictions.append(remove_padding_and_flatten(batch_pred, lengths))
 
         # TODO should words in sentence labeled as "O" receive error information? - right now they don't
-        print([(word_dict.idx2str[w_id], label_dict.idx2str[l_id])
-               for w_id, l_id in zip(remove_padding_and_flatten(batch_wid, lengths)[:100],
-                                     remove_padding_and_flatten(batch_act, lengths)[:100])])
+        # print([(word_dict.idx2str[w_id], label_dict.idx2str[l_id])
+        #        for w_id, l_id in zip(remove_padding_and_flatten(batch_wid, lengths)[:100],
+        #                              remove_padding_and_flatten(batch_act, lengths)[:100])])
 
     # calc f1 score
     a = np.concatenate(batch_actuals, axis=0)
