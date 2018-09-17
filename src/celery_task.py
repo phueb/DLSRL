@@ -29,9 +29,11 @@ def srl_task(**kwargs):
 
     # save config
     hostname = socket.gethostname()
-    p = Path(__file__).parent.parent / 'configs' / 'config_{}.json'.format(hostname)
-    json.dump(d, p.open('w'), ensure_ascii=False)
-    print('Saved configs to {}'.format(p))
+    dir = Path(__file__).parent.parent / 'configs'
+    if not dir.is_dir():
+        dir.mkdir()
+    json.dump(d, (dir / 'config_{}.json'.format(hostname)).open('w'), ensure_ascii=False)
+    print('Saved configs to {}'.format(dir))
 
     config = argparse.Namespace(**d)
 

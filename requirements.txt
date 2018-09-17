@@ -1,3 +1,7 @@
+numpy
+scikit-learn
 celery
 tensorflow-gpu
 flower
+python-dotenv
+scipy
