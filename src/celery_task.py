@@ -7,7 +7,7 @@ import socket
 import os
 
 from src.data_utils import get_data
-from src.train_utils import get_feed_dicts, evaluate, shuffle_stack_pad
+from src.train_utils import get_batches, evaluate, shuffle_stack_pad, make_feed_dict
 from src.model import Model
 from src import config_str
 
@@ -41,6 +41,7 @@ def srl_task(**kwargs):
     train_data, dev_data, word_dict, label_dict, embeddings = get_data(
         config, TRAIN_DATA_PATH, DEV_DATA_PATH)
 
+    # train loop
     epoch_step = 0
     global_step = 0
     epoch_loss_sum = 0.0
@@ -52,19 +53,18 @@ def srl_task(**kwargs):
                                                          log_device_placement=False))
         sess.run(tf.global_variables_initializer())
         for epoch in range(config.max_epochs):
-            # eval
-            evaluate(dev_data, model, sess, epoch, global_step, word_dict, label_dict)
-            # train
+            evaluate(dev_data, model, sess, epoch, global_step)
             x1, x2, y = shuffle_stack_pad(train_data, config.train_batch_size)
             epoch_start = time.time()
-            for feed_dict in get_feed_dicts(x1, x2, y, model, config.train_batch_size, config.keep_prob):
+            for x1_b, x2_b, y_b in get_batches(x1, x2, y, config.train_batch_size):
+                feed_dict = make_feed_dict(x1_b, x2_b, y_b, model, config.keep_prob)
                 if epoch_step % LOSS_INTERVAL == 0:
                     # tensorboard
                     run_options = tf.RunOptions(trace_level=tf.RunOptions.NO_TRACE)
-                    summary = sess.run(model.merged1,
+                    scalar_summaries = sess.run(model.scalar_summaries,
                                        feed_dict=feed_dict,
                                        options=run_options)
-                    model.train_writer.add_summary(summary, global_step)
+                    model.train_writer.add_summary(scalar_summaries, global_step)
                     # print info
                     print("step {:>6} epoch {:>3}: loss={:1.3f}, epoch sec={:3.0f}, total hrs={:.1f}".format(
                         epoch_step,

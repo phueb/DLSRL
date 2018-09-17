@@ -96,7 +96,7 @@ def get_data(config, train_data_path, dev_data_path):
 
     # prepare label dictionary
     label_dict = Dictionary()
-    label_dict.set_unknown_str(PADDING_LABEL)  # set this first to ignore during learning  # TODO test
+    label_dict.set_unknown_str(PADDING_LABEL)  # set this first to ignore during learning
     label_dict.set_unknown_str(UNKNOWN_LABEL)  # set this second to learn this label
 
     # train_data
