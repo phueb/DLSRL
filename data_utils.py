@@ -8,10 +8,13 @@ WORD_EMBEDDINGS = { "50":  'glove.6B.50d.txt',
                     "100": 'glove.6B.100d.txt',
                     "200": 'glove.6B.200d.txt'}
 
-START_MARKER  = '<S>'
-END_MARKER    = '</S>'
-UNKNOWN_TOKEN = '*UNKNOWN*'
-PADDING_TOKEN = '*PAD*'
+START_MARKER = '<S>'
+END_MARKER = '</S>'
+UNKNOWN_WORD = '*UNKNOWN*'
+UNKNOWN_LABEL = 'O'  # must match data file
+
+PADDING_WORD = '*PAD*'
+PADDING_LABEL = 'PAD_LABEL'
 
 
 def get_propositions_from_file(filepath, use_se_marker=False):
@@ -40,19 +43,23 @@ def get_propositions_from_file(filepath, use_se_marker=False):
     return propositions
 
 
-def make_word2embed(filepath):
+def make_word2embed(file_name):
     # load
     print('Loading embeddings...')
-    with open(filepath + '.pkl', 'rb') as f:
-        word_to_embed_dict = pickle.load(f)
+    try:
+        with open('/media/ph/ssd_drive/' + file_name + '.pkl', 'rb') as f:
+            word_to_embed_dict = pickle.load(f)
+    except:
+        with open(file_name + '.pkl', 'rb') as f:
+            word_to_embed_dict = pickle.load(f)
     # add vectors
     embedding_size = next(iter(word_to_embed_dict.items()))[1].shape[0]
     word_to_embed_dict[START_MARKER] = [random.gauss(0, 0.01) for _ in range(embedding_size)]
     word_to_embed_dict[END_MARKER] = [random.gauss(0, 0.01) for _ in range(embedding_size)]
-    if UNKNOWN_TOKEN not in word_to_embed_dict:
-        word_to_embed_dict[UNKNOWN_TOKEN] = [random.gauss(0, 0.01) for _ in range(embedding_size)]
-    if PADDING_TOKEN not in word_to_embed_dict:
-        word_to_embed_dict[PADDING_TOKEN] = [random.gauss(0, 0.01) for _ in range(embedding_size)]
+    if UNKNOWN_WORD not in word_to_embed_dict:
+        word_to_embed_dict[UNKNOWN_WORD] = [random.gauss(0, 0.01) for _ in range(embedding_size)]
+    if PADDING_WORD not in word_to_embed_dict:
+        word_to_embed_dict[PADDING_WORD] = [random.gauss(0, 0.01) for _ in range(embedding_size)]
     return word_to_embed_dict
 
 
@@ -65,7 +72,7 @@ def words_to_ids(str_seq, dictionary, lowercase=False, word2embed=None):
         if lowercase:
             s = s.lower()
         if word2embed is not None and s not in word2embed:  # if word is not in embedding, make UNKNOWN
-            s = UNKNOWN_TOKEN
+            s = UNKNOWN_WORD
         ids.append(dictionary.add(s))
     return ids
 
@@ -86,16 +93,16 @@ def get_data(config, train_data_path, dev_data_path):
 
     # prepare word dictionary
     word_dict = Dictionary()  # do not add words from test data to word_dict
-    word_dict.set_padding_token(PADDING_TOKEN)  # must be first to get zero id
-    word_dict.set_unknown_token(UNKNOWN_TOKEN)
+    word_dict.set_padding_str(PADDING_WORD)  # must be first to get zero id
+    word_dict.set_unknown_str(UNKNOWN_WORD)
     if use_se_marker:
         word_dict.add(START_MARKER)
         word_dict.add(END_MARKER)
 
     # prepare label dictionary
     label_dict = Dictionary()
-    # TODO add padding token first (before unknon token) which only gets mapped to *PADDING*
-    label_dict.set_unknown_token('O')  # set this first to guarantee id of zero
+    label_dict.set_unknown_str(PADDING_LABEL)  # set this first to ignore during learning  # TODO test
+    label_dict.set_unknown_str(UNKNOWN_LABEL)  # set this second to learn this label
 
     # train_data
     train_word_ids = [words_to_ids(p[0], word_dict, True, word2embed) for p in raw_train_props]

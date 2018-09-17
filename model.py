@@ -107,9 +107,6 @@ class Model():
             # loss
             self.label_ids = tf.placeholder(tf.int32, [None, None], name='label_ids')  # [batch_size, max_seq_len]
             label_ids_flat = tf.reshape(self.label_ids, [-1])  # need [shape0]
-
-
-            # TODO test
             mask = tf.greater(label_ids_flat, 0, 'mask')
             nonzero_label_ids_flat = tf.boolean_mask(label_ids_flat, mask, name='nonzero_label_ids_flat')  # removes elements
             nonzero_logits = tf.boolean_mask(logits, mask, name='nonzero_logits')
@@ -121,7 +118,7 @@ class Model():
                                                                     name='losses')
             self.nonzero_mean_loss = tf.reduce_mean(nonzero_losses, name='nonzero_mean_loss')
             self.mean_loss = tf.reduce_mean(losses, name='mean_loss')
-            # TODO do not mask zero label - make 2d mask in numpy, then flatten and feed into graph
+            # TODO do not mask zero label - make 2d mask in numpy, then flatten and feed into graph - or start "O" label a 1
 
             # update
             optimizer = tf.train.AdadeltaOptimizer(learning_rate=config.learning_rate, epsilon=config.epsilon)
@@ -146,7 +143,7 @@ class Model():
 
             # confusion matrix
             nonzero_cm = tf.confusion_matrix(nonzero_label_ids_flat, nonzero_predicted_label_ids)
-            cm = tf.confusion_matrix(label_ids_flat, predicted_label_ids)  # TODO test
+            cm = tf.confusion_matrix(label_ids_flat, predicted_label_ids)  
             size = tf.shape(cm)[0]
             nonzero_cm_image = tf.summary.image('nonzero_cm', tf.reshape(tf.cast(nonzero_cm, tf.float32),
                                                                               [1, size, size, 1]))  # needs 4d

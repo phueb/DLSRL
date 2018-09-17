@@ -7,17 +7,18 @@ class Dictionary(object):
         self.str2idx = {}
         self.idx2str = []
         self.accept_new = True
-        self.unknown_token = None
+        self.unknown_str = None
         self.unknown_id = None
-        self.padding_token = None
+        self.padding_str = None
+        self.padding_id = None
 
-    def set_unknown_token(self, unknown_token):
-        self.unknown_token = unknown_token
-        self.unknown_id = self.add(unknown_token)
+    def set_unknown_str(self, s):
+        self.unknown_str = s
+        self.unknown_id = self.add(s)
 
-    def set_padding_token(self, padding_token):
-        self.padding_token = padding_token
-        self.padding_id = self.add(padding_token)
+    def set_padding_str(self, s):
+        self.padding_str = s
+        self.padding_id = self.add(s)
 
     def add(self, new_str):
         if new_str not in self.str2idx:

@@ -2,7 +2,7 @@ import numpy as np
 from sklearn.metrics import f1_score, precision_score, recall_score
 
 
-def shuffle_stack_pad(data, batch_size):
+def shuffle_stack_pad(data, batch_size, shuffle=True):
     """
     :param data: [list of word_id seqs, list of pred_id seqs, list of label_id seqs]
     :return: zero-padded matrices for each list of shape [num_seqs, max_seq_len]
@@ -13,9 +13,12 @@ def shuffle_stack_pad(data, batch_size):
     shape0_adj = shape0 - num_excluded
     shape1 = np.max([len(i) for i in data[1]])
     mats = [np.zeros((shape0_adj, shape1)).astype(np.int32) for _ in range(3)]
-    rand_ids = np.random.choice(shape0, shape0_adj, replace=False)
+    if shuffle:
+        row_ids = np.random.choice(shape0, shape0_adj, replace=False)
+    else:
+        row_ids = np.arange(shape0_adj)
     for sequences, mat in zip(data, mats):
-        for n, rand_id in enumerate(rand_ids):
+        for n, rand_id in enumerate(row_ids):
             seq = sequences[rand_id]
             mat[n, :len(seq)] = seq
     return mats  # x1, x2, y  # TODO data is intact here
@@ -61,7 +64,7 @@ def evaluate(data, model, sess, epoch, global_step, word_dict, label_dict, batch
     if batch_size is None:
         batch_size = len(data[0])
         assert batch_size < 4096  # keep memory low when evaluating complete data (no batching)
-    x1, x2, y = shuffle_stack_pad(data, batch_size)
+    x1, x2, y = shuffle_stack_pad(data, batch_size, shuffle=False)
     # eval dev data
     for feed_dict in get_feed_dicts(x1, x2, y, model, batch_size, keep_prob=1.0):
         # export confusion matrix
@@ -76,9 +79,9 @@ def evaluate(data, model, sess, epoch, global_step, word_dict, label_dict, batch
         batch_predictions.append(remove_padding_and_flatten(batch_pred, lengths))
 
         # TODO should words in sentence labeled as "O" receive error information? - right now they don't
-        # print([(word_dict.idx2str[w_id], label_dict.idx2str[l_id])
-        #        for w_id, l_id in zip(remove_padding_and_flatten(batch_wid, lengths)[:100],
-        #                              remove_padding_and_flatten(batch_act, lengths)[:100])])
+        print([(word_dict.idx2str[w_id], label_dict.idx2str[l_id])
+               for w_id, l_id in zip(remove_padding_and_flatten(batch_wid, lengths)[:10],  # [B, T]
+                                     remove_padding_and_flatten(batch_act, lengths)[:10])])
 
     # calc f1 score
     a = np.concatenate(batch_actuals, axis=0)

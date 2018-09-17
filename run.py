@@ -1,10 +1,10 @@
-# #!/usr/bin/env/python3
-
+from dotenv import load_dotenv
 import json
 from argparse import Namespace
 import tensorflow as tf
 import time
 import argparse
+import socket
 
 from data_utils import get_data
 from train_utils import get_feed_dicts, evaluate, shuffle_stack_pad
@@ -16,17 +16,13 @@ DEV_DATA_PATH =  'data/conll05.dev.txt'
 TENSORBOARD_DIR = 'tb'
 
 LOSS_INTERVAL = 100
-TFVIS_PATH = '/home/ph'
 
 
 def export_to_tensorboard(model, sess, feed_dict, global_step):
-    run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-    run_metadata = tf.RunMetadata()
+    run_options = tf.RunOptions(trace_level=tf.RunOptions.NO_TRACE)
     summary = sess.run(model.merged1,
                        feed_dict=feed_dict,
-                       options=run_options,
-                       run_metadata=run_metadata)
-    model.train_writer.add_run_metadata(run_metadata, 'step%03d' % global_step)
+                       options=run_options)
     model.train_writer.add_summary(summary, global_step)
 
 
@@ -84,4 +80,9 @@ if __name__ == "__main__":
                         help='Number of config_file (e.g. "1" in config1.json)')
     namespace = parser.parse_args()
     config_file_path = 'configs/' + 'config{}.json'.format(namespace.config_number)
+    if socket.gethostname() == 'Ursa':
+        p = 'Ursa.env'
+    else:
+        p = 'not_Ursa.env'
+        load_dotenv(dotenv_path=p, verbose=True, override=True)
     srl_task(config_file_path)
