@@ -1,12 +1,10 @@
 import random
 import numpy as np
 import pickle
+from pathlib import Path
+import os
 
-from dictionary import Dictionary
-
-WORD_EMBEDDINGS = { "50":  'glove.6B.50d.txt',
-                    "100": 'glove.6B.100d.txt',
-                    "200": 'glove.6B.200d.txt'}
+from src.dictionary import Dictionary
 
 START_MARKER = '<S>'
 END_MARKER = '</S>'
@@ -43,15 +41,12 @@ def get_propositions_from_file(filepath, use_se_marker=False):
     return propositions
 
 
-def make_word2embed(file_name):
+def make_word2embed(embed_size):
     # load
     print('Loading embeddings...')
-    try:
-        with open('/media/ph/ssd_drive/' + file_name + '.pkl', 'rb') as f:
-            word_to_embed_dict = pickle.load(f)
-    except:
-        with open(file_name + '.pkl', 'rb') as f:
-            word_to_embed_dict = pickle.load(f)
+    p = Path(os.environ.get('GLOVE{}_PATH'.format(embed_size)))
+    with p.open('rb') as f:
+        word_to_embed_dict = pickle.load(f)
     # add vectors
     embedding_size = next(iter(word_to_embed_dict.items()))[1].shape[0]
     word_to_embed_dict[START_MARKER] = [random.gauss(0, 0.01) for _ in range(embedding_size)]
@@ -89,7 +84,7 @@ def get_data(config, train_data_path, dev_data_path):
     use_se_marker = config.use_se_marker
     raw_train_props = get_propositions_from_file(train_data_path, use_se_marker)
     raw_dev_props = get_propositions_from_file(dev_data_path, use_se_marker)
-    word2embed = make_word2embed(WORD_EMBEDDINGS[config.embed_size])
+    word2embed = make_word2embed(config.embed_size)
 
     # prepare word dictionary
     word_dict = Dictionary()  # do not add words from test data to word_dict

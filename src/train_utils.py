@@ -21,7 +21,7 @@ def shuffle_stack_pad(data, batch_size, shuffle=True):
         for n, rand_id in enumerate(row_ids):
             seq = sequences[rand_id]
             mat[n, :len(seq)] = seq
-    return mats  # x1, x2, y  # TODO data is intact here
+    return mats  # x1, x2, y
 
 
 def count_zeros_from_end(s):
@@ -78,10 +78,10 @@ def evaluate(data, model, sess, epoch, global_step, word_dict, label_dict, batch
         batch_actuals.append(remove_padding_and_flatten(batch_act, lengths))
         batch_predictions.append(remove_padding_and_flatten(batch_pred, lengths))
 
-        # TODO should words in sentence labeled as "O" receive error information? - right now they don't
+        # sanity check
         print([(word_dict.idx2str[w_id], label_dict.idx2str[l_id])
-               for w_id, l_id in zip(remove_padding_and_flatten(batch_wid, lengths)[:10],  # [B, T]
-                                     remove_padding_and_flatten(batch_act, lengths)[:10])])
+               for w_id, l_id in zip(remove_padding_and_flatten(batch_wid, lengths)[:100],  # [B, T]
+                                     remove_padding_and_flatten(batch_act, lengths)[:100])])
 
     # calc f1 score
     a = np.concatenate(batch_actuals, axis=0)

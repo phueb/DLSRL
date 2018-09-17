@@ -1,1 +1,3 @@
-pycm
+celery
+tensorflow-gpu
+flower
