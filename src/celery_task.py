@@ -4,6 +4,7 @@ import time
 import argparse
 from pathlib import Path
 import socket
+import os
 
 from src.data_utils import get_data
 from src.train_utils import get_feed_dicts, evaluate, shuffle_stack_pad
@@ -22,6 +23,7 @@ def srl_task(**kwargs):
     d = json.loads(config_str)
     for k, v in kwargs.items():
         d[k] = v
+    config = argparse.Namespace(**d)
     print('///// Configs START')
     for k, v in sorted(d.items()):
         print('    {:>20}={:<20}'.format(k, v))
@@ -29,13 +31,11 @@ def srl_task(**kwargs):
 
     # save config
     hostname = socket.gethostname()
-    dir = Path(__file__).parent.parent / 'configs'
-    if not dir.is_dir():
-        dir.mkdir()
-    json.dump(d, (dir / 'config_{}.json'.format(hostname)).open('w'), ensure_ascii=False)
-    print('Saved configs to {}'.format(dir))
-
-    config = argparse.Namespace(**d)
+    jscon_configs_dir = Path(os.environ['JSON_CONFIGS_DIR'])
+    if not jscon_configs_dir.is_dir():
+        jscon_configs_dir.mkdir()
+    json.dump(d, (jscon_configs_dir / 'config_{}.json'.format(hostname)).open('w'), ensure_ascii=False)
+    print('Saved configs to {}'.format(jscon_configs_dir))
 
     # data
     train_data, dev_data, word_dict, label_dict, embeddings = get_data(

@@ -2,10 +2,10 @@ import tensorflow as tf
 from tensorflow.contrib.rnn import HighwayWrapper, LSTMCell, DropoutWrapper
 from tensorflow.python.ops import array_ops
 from socket import gethostname
+import os
+from pathlib import Path
 
 PARALLEL_ITERATIONS = 32
-
-# TODO visualize graph on tensorboard
 
 
 def orthonorm(shape, dtype=tf.float32,  # TODO only works for square (recurrent) weights
@@ -118,7 +118,6 @@ class Model():
                                                                     name='losses')
             self.nonzero_mean_loss = tf.reduce_mean(nonzero_losses, name='nonzero_mean_loss')
             self.mean_loss = tf.reduce_mean(losses, name='mean_loss')
-            # TODO do not mask zero label - make 2d mask in numpy, then flatten and feed into graph - or start "O" label a 1
 
             # update
             optimizer = tf.train.AdadeltaOptimizer(learning_rate=config.learning_rate, epsilon=config.epsilon)
@@ -139,7 +138,8 @@ class Model():
             tf.summary.scalar('mean_xe', self.nonzero_mean_loss)
             tf.summary.scalar('nonzero_mean_xe', self.nonzero_mean_loss)
             self.merged1 = tf.summary.merge_all()
-            self.train_writer = tf.summary.FileWriter('tb/' + gethostname(), g)
+            p = Path(os.environ['TENSORBOARD_LOG_DIR']) / gethostname()
+            self.train_writer = tf.summary.FileWriter(str(p), g)
 
             # confusion matrix
             nonzero_cm = tf.confusion_matrix(nonzero_label_ids_flat, nonzero_predicted_label_ids)

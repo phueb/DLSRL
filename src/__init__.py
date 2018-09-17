@@ -9,7 +9,7 @@ if p.exists():
     load_dotenv(dotenv_path=str(p), verbose=True, override=True)
     print('Loaded environment variables from {}'.format(p))
 else:
-    raise SystemExit('Did not find environment file')
+    raise SystemExit('Did not find {}'.format(p))
 
 
 config_str = '''

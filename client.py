@@ -1,8 +1,6 @@
 from pathlib import Path
-import json
 
-from celery_app import srl_task
-from src import config_str
+from app import srl_task
 
 
 if __name__ == "__main__":
