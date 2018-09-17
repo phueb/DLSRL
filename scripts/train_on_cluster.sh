@@ -1,15 +1,10 @@
 #!/usr/bin/env bash
 
-DLSRL_DIR=/home/lab/cluster/celery/dlsrl
-
-# copy task to s76
-#echo Copying task to s76
-#scp -r ../src s76:$DLSRL_DIR
-#scp ../app.py s76:$DLSRL_DIR
-#scp ../client.py s76:$DLSRL_DIR
-#scp ../celeryconfig.py s76:$DLSRL_DIR
-
-git push cluster
+# rsync python files to s76
+echo RSyncing python files to s76
+rsync --verbose --recursive --stats ../data s76:/home/lab/cluster/celery/dlsrl
+rsync --verbose --stats ../src/*.py s76:/home/lab/cluster/celery/dlsrl/src
+rsync --verbose --stats ../client.py ../app.py ../src s76:/home/lab/cluster/celery/dlsrl
 
 # kill workers
 for i in bengio hawkins hebb hinton hoff lecun norman pitts;

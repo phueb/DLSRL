@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from app import srl_task
 
 
