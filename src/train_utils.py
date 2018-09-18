@@ -65,25 +65,32 @@ def evaluate(data, model, sess, epoch, global_step):
     summary = sess.run(model.cm_summary, feed_dict=feed_dict)
     model.train_writer.add_summary(summary, global_step)
 
-    # get predictions
+    # get predictions  # TODO viterbi decoding? add decoding constraint?
     p, a = sess.run([model.nonzero_predicted_label_ids, model.nonzero_label_ids_flat], feed_dict=feed_dict)
+
+
+    # TODO
+    assert np.sum(feed_dict[model.lengths]) == len(a) == len(p)
 
     # what is model predicting?
     for i, j in zip(a[:100], p[:100]):
         print('a="{}", p="{}"'.format(i, j))
 
     # calc f1
-    print('/////////////////////////// f1 EVALUATION START')
     print('num labels={:,}'.format(len(a)))
-    print_f1(epoch, 'macro', a, p)
-    print_f1(epoch, 'micro', a, p)
-    print('/////////////////////////// f1 EVALUATION END ')
+    print_f1(epoch, 'macro-labels', f1_score(a, p, average='macro'))
+    print_f1(epoch, 'micro-labels', f1_score(a, p, average='micro'))
+    print_f1(epoch, 'overall-arguments', f1_conll05(a, p, feed_dict[model.lengths]))
 
 
-def print_f1(epoch, method, a, p):
-    print('epoch {:>3} method={} | p={:.2f} r={:.2f} f1={:.2f}'.format(
-        epoch,
-        method,
-        precision_score(a, p, average=method),
-        recall_score(a, p, average=method),
-        f1_score(a, p, average=method)))  # TODO which is conll script using?
+def print_f1(epoch, method, f1):
+    print('epoch {:>3} method={} | f1={:.2f}'.format(epoch, method, f1))
+
+
+def f1_conll05(a, p, lengths):
+    start_p = 0
+    for l in lengths:
+        a_prop = a[start_p:start_p + l]
+        p_prop = a[start_p:start_p + l]
+        print([(i, j) for i, j in zip(a_prop, p_prop)])  # TODO test
+        start_p += l
