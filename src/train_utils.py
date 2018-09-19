@@ -66,31 +66,48 @@ def evaluate(data, model, sess, epoch, global_step):
     model.train_writer.add_summary(summary, global_step)
 
     # get predictions  # TODO viterbi decoding? add decoding constraint?
-    p, a = sess.run([model.nonzero_predicted_label_ids, model.nonzero_label_ids_flat], feed_dict=feed_dict)
-
-
-    # TODO
-    assert np.sum(feed_dict[model.lengths]) == len(a) == len(p)
+    pred, gold = sess.run([model.nonzero_predicted_label_ids, model.nonzero_label_ids_flat], feed_dict=feed_dict)
 
     # what is model predicting?
-    for i, j in zip(a[:100], p[:100]):
+    for i, j in zip(gold[:100], pred[:100]):
         print('a="{}", p="{}"'.format(i, j))
 
     # calc f1
-    print('num labels={:,}'.format(len(a)))
-    print_f1(epoch, 'macro-labels', f1_score(a, p, average='macro'))
-    print_f1(epoch, 'micro-labels', f1_score(a, p, average='micro'))
-    print_f1(epoch, 'overall-arguments', f1_conll05(a, p, feed_dict[model.lengths]))
+    print('num labels={:,}'.format(len(gold)))
+    print_f1(epoch, 'macro-labels', f1_score(gold, pred, average='macro'))
+    print_f1(epoch, 'micro-labels', f1_score(gold, pred, average='micro'))
+    print_f1(epoch, 'overall-arguments', f1_conll05(gold, pred, feed_dict[model.lengths]))
 
 
 def print_f1(epoch, method, f1):
     print('epoch {:>3} method={} | f1={:.2f}'.format(epoch, method, f1))
 
 
-def f1_conll05(a, p, lengths):
+def f1_conll05(gold, pred, lengths):  # TODO test
+    hits = 0
+    over_predictions = 0
+    misses = 0
     start_p = 0
     for l in lengths:
-        a_prop = a[start_p:start_p + l]
-        p_prop = a[start_p:start_p + l]
-        print([(i, j) for i, j in zip(a_prop, p_prop)])  # TODO test
+        gold_prop = gold[start_p:start_p + l]
+        pred_prop = pred[start_p:start_p + l]
+        print([(i, j) for i, j in zip(gold_prop, pred_prop)])  # TODO test
         start_p += l
+        # hits + misses
+        gold_args = set(gold_prop)
+        for arg in set(pred_prop):  # assumes max number of args with same type in prop is 1
+            gold_pos = np.where(gold_prop == arg)
+            pred_pos = np.where(pred_prop == arg)
+            if np.array_equal(gold_pos, pred_pos):  # checks array shape and values
+                hits += 1
+                gold_args.remove(arg)
+            else:
+                over_predictions += 1
+        # any leftover predicted args are misses
+        misses += len(gold_args)
+    print('hits={}, over-predictions={}, misses={}'.format(hits, over_predictions, misses))
+    # f1
+    precision = hits / (hits + over_predictions)
+    recall = hits / (hits + misses)
+    f1 = (2 * precision * recall) / (precision + recall)
+    return f1
