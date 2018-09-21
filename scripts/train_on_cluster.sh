@@ -31,8 +31,12 @@ EOF
 done
 
 # submit tasks to workers
+# start flower
 ssh s76 <<- EOF
     cd /home/lab/cluster/celery/dlsrl
     python3 client.py
     nohup flower -A app --port=5001 > /dev/null 2>&1 &
 EOF
+
+# start tensorboard
+ssh s76 "nohup python3 /home/ph/.local/bin/tensorboard --logdir=/home/lab/cluster/tensorboard/dlsrl > /dev/null 2>&1 &"
