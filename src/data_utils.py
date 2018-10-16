@@ -1,8 +1,7 @@
 import random
 import numpy as np
-import pickle
-from pathlib import Path
 import os
+from pathlib import Path
 
 from src.dictionary import Dictionary
 
@@ -42,13 +41,17 @@ def get_propositions_from_file(filepath, use_se_marker=False):
 
 
 def make_word2embed(embed_size):
-    # load
     print('Loading embeddings...')
-    p = Path(os.environ.get('GLOVE{}_PATH'.format(embed_size)))
+    word_to_embed_dict = dict()
+    p = Path(os.environ['GLOVE{}_PATH'.format(embed_size)])
     with p.open('rb') as f:
-        word_to_embed_dict = pickle.load(f)
-    # add vectors
+        for line in f:
+            info = line.strip().split()
+            word = info[0]
+            embedding = np.array([float(r) for r in info[1:]])
+            word_to_embed_dict[word] = embedding
     embedding_size = next(iter(word_to_embed_dict.items()))[1].shape[0]
+    print('Glove embedding size={}'.format(embedding_size))
     word_to_embed_dict[START_MARKER] = [random.gauss(0, 0.01) for _ in range(embedding_size)]
     word_to_embed_dict[END_MARKER] = [random.gauss(0, 0.01) for _ in range(embedding_size)]
     if UNKNOWN_WORD not in word_to_embed_dict:

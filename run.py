@@ -1,6 +1,6 @@
 import argparse
 
-from src.celery_task import srl_task
+from src.task import srl_task
 
 # overwrite configs
 parser = argparse.ArgumentParser()

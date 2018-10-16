@@ -85,9 +85,9 @@ def print_f1(epoch, method, f1):
 
 
 def f1_conll05(gold, pred, lengths, exclude_label_one=True):  # TODO due to BIO tagging complete arguments are not compared (only B-to-B and I-to_I)
-    hits = 0
-    over_predictions = 0
-    misses = 0
+    hits = 1
+    over_predictions = 1
+    misses = 1
     start_p = 0
     for l in lengths:
         # get single prop + exclude label=1 (this labels words outside arguments)

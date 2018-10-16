@@ -10,6 +10,7 @@ from src.data_utils import get_data
 from src.train_utils import get_batches, evaluate, shuffle_stack_pad, make_feed_dict
 from src.model import Model
 from src import config_str
+import datetime
 
 TRAIN_DATA_PATH = 'data/conll05.train.txt'
 DEV_DATA_PATH = 'data/conll05.dev.txt'
@@ -30,11 +31,11 @@ def srl_task(**kwargs):
     print('///// Configs END')
 
     # save config
-    hostname = socket.gethostname()
+    time_of_init = datetime.datetime.now().strftime('%m-%d-%H-%M')
     jscon_configs_dir = Path(os.environ['JSON_CONFIGS_DIR'])
     if not jscon_configs_dir.is_dir():
         jscon_configs_dir.mkdir()
-    json.dump(d, (jscon_configs_dir / 'config_{}.json'.format(hostname)).open('w'), ensure_ascii=False)
+    json.dump(d, (jscon_configs_dir / 'config_{}.json'.format(time_of_init)).open('w'), ensure_ascii=False)
     print('Saved configs to {}'.format(jscon_configs_dir))
 
     # data
