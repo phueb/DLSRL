@@ -32,11 +32,11 @@ def srl_task(**kwargs):
 
     # save config
     time_of_init = datetime.datetime.now().strftime('%m-%d-%H-%M')
-    jscon_configs_dir = Path(os.environ['JSON_CONFIGS_DIR'])
-    if not jscon_configs_dir.is_dir():
-        jscon_configs_dir.mkdir()
-    json.dump(d, (jscon_configs_dir / 'config_{}.json'.format(time_of_init)).open('w'), ensure_ascii=False)
-    print('Saved configs to {}'.format(jscon_configs_dir))
+    runs_dir = Path(os.environ['RUNS_CONFIGS_DIR'])
+    if not runs_dir.is_dir():
+        runs_dir.mkdir()
+    json.dump(d, (runs_dir / 'config_{}.json'.format(time_of_init)).open('w'), ensure_ascii=False)
+    print('Saved configs to {}'.format(runs_dir))
 
     # data
     train_data, dev_data, word_dict, label_dict, embeddings = get_data(
@@ -53,7 +53,12 @@ def srl_task(**kwargs):
         sess = tf.Session(graph=g, config=tf.ConfigProto(allow_soft_placement=True,
                                                          log_device_placement=False))
         sess.run(tf.global_variables_initializer())
+        ckpt_saver = tf.train.Saver(max_to_keep=config.max_epochs)
         for epoch in range(config.max_epochs):
+            # save chckpoint from which to load model
+            path = runs_dir / "{}_epoch_{}.ckpt".format(time_of_init, epoch)
+            ckpt_saver.save(sess, str(path))
+            print('Saved checkpoint.')
             evaluate(dev_data, model, sess, epoch, global_step)
             x1, x2, y = shuffle_stack_pad(train_data, config.train_batch_size)
             epoch_start = time.time()
