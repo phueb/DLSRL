@@ -48,11 +48,10 @@ def main(param2val):
     # data
     train_data, dev_data, word_dict, label_dict, embeddings = get_data(
         params, config.Eval.train_data_path, config.Eval.dev_data_path)
+    sys.stdout.flush()
 
     # train loop
-    epoch_step = 0
     global_step = 0
-    epoch_loss_sum = 0.0
     global_start = time.time()
     tf_graph = tf.Graph()
     with tf_graph.as_default():
@@ -64,6 +63,11 @@ def main(param2val):
         summary_writer = tf.summary.FileWriter(local_job_p, sess.graph)
         sess.run(tf.global_variables_initializer())
         ckpt_saver = tf.train.Saver(max_to_keep=params.max_epochs)
+
+        # eval
+        x1, x2, y = shuffle_stack_pad(train_data, params.train_batch_size)
+        loss = sess.run(model.nonzero_mean_loss, feed_dict=make_feed_dict(x1, x2, y, model, keep_prob=1.0))
+        sys.stdout.flush()
 
         for epoch in range(params.max_epochs):
 
@@ -79,7 +83,7 @@ def main(param2val):
 
             for x1_b, x2_b, y_b in get_batches(x1, x2, y, params.train_batch_size):
                 feed_dict = make_feed_dict(x1_b, x2_b, y_b, model, params.keep_prob)
-                if epoch_step % config.Eval.loss_interval == 0:
+                if global_step % config.Eval.loss_interval == 0:
 
                     # tensorboard
                     run_options = tf.RunOptions(trace_level=tf.RunOptions.NO_TRACE)
@@ -90,18 +94,16 @@ def main(param2val):
 
                     # print info
                     print("step {:>6} epoch {:>3}: loss={:1.3f}, epoch sec={:3.0f}, total hrs={:.1f}".format(
-                        epoch_step,
+                        global_step,
                         epoch,
-                        epoch_loss_sum / max(epoch_step, 1),
+                        loss,
                         (time.time() - epoch_start),
                         (time.time() - global_start) / 3600))
+                    sys.stdout.flush()
 
                 loss, _ = sess.run([model.nonzero_mean_loss, model.update], feed_dict=feed_dict)
-                epoch_loss_sum += loss
-                epoch_step += 1
                 global_step += 1
-            epoch_step = 0
-            epoch_loss_sum = 0.0
+
 
         sess.close()
         summary_writer.flush()

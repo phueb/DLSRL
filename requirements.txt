@@ -1,4 +1,5 @@
 numpy
 scikit-learn
-tensorflow-gpu==1.4
+tensorflow-gpu==1.14.0
 scipy
+pandas

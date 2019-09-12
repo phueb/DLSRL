@@ -2,9 +2,15 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 import re
 
-adam_p = Path('Adam')
-eve_p = Path('Eve')
-sarah_p = Path('Eve')
+UNKNOWN_LABEL = '0'
+
+
+adam_p = Path('data/BabySRL-XML/Adam')
+eve_p = Path('data/BabySRL-XML/Eve')
+sarah_p = Path('data/BabySRL-XML/Eve')
+
+
+# TODO make thsi into a prepare_data function whcih is called by ludwigcluster before submission of jobs
 
 
 def has_props(child):
@@ -35,7 +41,7 @@ for xml_p in sorted(adam_p.glob('*.xml')):
                     words += words_
 
             # collect labels
-            labels = [None] * len(words)  # in a single utterance
+            labels = [UNKNOWN_LABEL] * len(words)  # in a single utterance
             for c2 in c1:  # iterate over children in utterance node
                 if c2.tag == '{http://www.talkbank.org/ns/talkbank}props':
                     for label_child in c2.itertext():
