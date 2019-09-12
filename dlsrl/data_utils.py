@@ -3,12 +3,12 @@ import numpy as np
 import os
 from pathlib import Path
 
-from src.dictionary import Dictionary
+from dlsrl.dictionary import Dictionary
 
 START_MARKER = '<S>'
 END_MARKER = '</S>'
 UNKNOWN_WORD = '*UNKNOWN*'
-UNKNOWN_LABEL = 'O'  # must match data file
+UNKNOWN_LABEL = 'O'  # must match CONLL05 file
 
 PADDING_WORD = '*PAD*'
 PADDING_LABEL = 'PAD_LABEL'
@@ -90,7 +90,7 @@ def get_data(config, train_data_path, dev_data_path):
     word2embed = make_word2embed(config.embed_size)
 
     # prepare word dictionary
-    word_dict = Dictionary()  # do not add words from test data to word_dict
+    word_dict = Dictionary()  # do not add words from test CONLL05 to word_dict
     word_dict.set_padding_str(PADDING_WORD)  # must be first to get zero id
     word_dict.set_unknown_str(UNKNOWN_WORD)
     if use_se_marker:

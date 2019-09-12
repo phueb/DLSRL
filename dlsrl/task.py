@@ -6,14 +6,14 @@ from pathlib import Path
 import socket
 import os
 
-from src.data_utils import get_data
-from src.train_utils import get_batches, evaluate, shuffle_stack_pad, make_feed_dict
-from src.model import Model
-from src import config_str
+from dlsrl.data_utils import get_data
+from dlsrl.train_utils import get_batches, evaluate, shuffle_stack_pad, make_feed_dict
+from dlsrl.model import Model
+from dlsrl import config_str
 import datetime
 
-TRAIN_DATA_PATH = 'data/conll05.train.txt'
-DEV_DATA_PATH = 'data/conll05.dev.txt'
+TRAIN_DATA_PATH = 'CONLL05/conll05.train.txt'
+DEV_DATA_PATH = 'CONLL05/conll05.dev.txt'
 
 LOSS_INTERVAL = 100
 
@@ -38,7 +38,7 @@ def srl_task(**kwargs):
     json.dump(d, (runs_dir / 'config_{}.json'.format(time_of_init)).open('w'), ensure_ascii=False)
     print('Saved configs to {}'.format(runs_dir))
 
-    # data
+    # CONLL05
     train_data, dev_data, word_dict, label_dict, embeddings = get_data(
         config, TRAIN_DATA_PATH, DEV_DATA_PATH)
 

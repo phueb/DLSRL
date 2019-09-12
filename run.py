@@ -1,6 +1,6 @@
 import argparse
 
-from src.task import srl_task
+from dlsrl.task import srl_task
 
 # overwrite configs
 parser = argparse.ArgumentParser()

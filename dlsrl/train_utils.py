@@ -55,9 +55,9 @@ def make_feed_dict(x1, x2, y, model, keep_prob):
 
 
 def evaluate(data, model, sess, epoch, global_step):
-    # make dev data
+    # make dev CONLL05
     batch_size = len(data[0])
-    assert batch_size <= 4096  # careful with large data
+    assert batch_size <= 4096  # careful with large CONLL05
     x1, x2, y = shuffle_stack_pad(data, batch_size=batch_size, shuffle=False)
     feed_dict = make_feed_dict(x1, x2, y, model, keep_prob=1.0)
 
