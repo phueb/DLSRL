@@ -1,5 +1,5 @@
-''' Bidirectional dictionary that maps between words and ids.
-'''
+""" Bidirectional dictionary that maps between words and ids.
+"""
 
 
 class Dictionary(object):

@@ -54,7 +54,7 @@ def make_feed_dict(x1, x2, y, model, keep_prob):
     return feed_dict
 
 
-def evaluate(data, model, sess, epoch, global_step):
+def evaluate(data, model, summary_writer, sess, epoch, global_step):
     # make dev CONLL05
     batch_size = len(data[0])
     assert batch_size <= 4096  # careful with large CONLL05
@@ -63,7 +63,7 @@ def evaluate(data, model, sess, epoch, global_step):
 
     # export confusion matrix
     summary = sess.run(model.cm_summary, feed_dict=feed_dict)
-    model.train_writer.add_summary(summary, global_step)
+    summary_writer.add_summary(summary, global_step)
 
     # get predictions  # TODO viterbi decoding? add decoding constraint?
     pred, gold = sess.run([model.nonzero_predicted_label_ids, model.nonzero_label_ids_flat], feed_dict=feed_dict)

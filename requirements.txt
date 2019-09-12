@@ -1,7 +1,4 @@
 numpy
 scikit-learn
-celery
 tensorflow-gpu==1.4
-flower
-python-dotenv
 scipy

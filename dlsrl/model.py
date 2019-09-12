@@ -75,7 +75,7 @@ def bilstms_interleaved(inputs, num_layers, size, keep_prob, lengths):
     return outputs
 
 
-class Model():
+class Model:
     def __init__(self, config, embeddings, num_labels, g):
 
         # embedding
@@ -140,8 +140,6 @@ class Model():
                                                                          tf.float32)))
             tf.summary.scalar('nonzero_mean_xe', self.nonzero_mean_loss)
             self.scalar_summaries = tf.summary.merge_all()
-            p = Path(os.environ['TENSORBOARD_LOG_DIR']) / gethostname()
-            self.train_writer = tf.summary.FileWriter(str(p), g)
 
             # confusion matrix
             nonzero_cm = tf.confusion_matrix(self.nonzero_label_ids_flat, self.nonzero_predicted_label_ids)
