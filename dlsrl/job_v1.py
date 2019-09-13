@@ -1,14 +1,10 @@
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
 import tensorflow as tf
 import shutil
 import time
 import sys
-import numpy as np
 
 from dlsrl.data_utils import get_data
-from dlsrl.train_utils import get_batches, evaluate, shuffle_stack_pad, make_feed_dict, count_zeros_from_end
+from dlsrl.train_utils import get_batches, evaluate, shuffle_stack_pad, make_feed_dict
 from dlsrl.model_v2 import Model
 from dlsrl import config
 
@@ -60,36 +56,17 @@ def main(param2val):
     with tf_graph.as_default():
 
         # model
-        model = Model(params, embeddings, label_dict.size())
+        model = Model(params, embeddings, label_dict.size(), tf_graph)
+        sess = tf.Session(graph=tf_graph, config=tf.ConfigProto(allow_soft_placement=True,
+                                                                log_device_placement=False))
+        summary_writer = tf.summary.FileWriter(local_job_p, sess.graph)
+        sess.run(tf.global_variables_initializer())
+        ckpt_saver = tf.train.Saver(max_to_keep=params.max_epochs)
 
-        # eval  # TODO test - do not use sess.run
+        # eval
         x1, x2, y = shuffle_stack_pad(train_data, params.batch_size)
-
-        x1_b = x1[:params.batch_size]  # word_ids
-        x2_b = x2[:params.batch_size].astype(np.float32)  # predicate_ids
-
-        lengths = [len(row) - count_zeros_from_end(row) for row in x1_b]
-        print('lengths')
-        print(lengths)
-        max_seq_len = np.max(lengths)
-        x1_b_max = x1_b[:, :max_seq_len]
-        x2_b_max = x2_b[:, :max_seq_len]
-
-        embedded = model.embed(x1_b_max)  # the whole dataset does not fit on GPU memory
-        print(embedded)
-        print(embedded.shape)
-
-        mask = np.clip(x1_b, 0, 1)
-        print(mask)
-        print(mask.shape)
-        encoded = model.encode_with_lstm(embedded, x2_b_max, mask)
-        print(encoded)
-        print(encoded.shape)
-
-
-
+        loss = sess.run(model.nonzero_mean_loss, feed_dict=make_feed_dict(x1, x2, y, model, keep_prob=1.0))
         sys.stdout.flush()
-        raise SystemExit('Debugging')
 
         for epoch in range(params.max_epochs):
 
@@ -105,14 +82,15 @@ def main(param2val):
 
             for x1_b, x2_b, y_b in get_batches(x1, x2, y, params.batch_size):
                 feed_dict = make_feed_dict(x1_b, x2_b, y_b, model, params.keep_prob)
-
-                # tensorboard
                 if global_step % config.Eval.summary_interval == 0:
-                    run_options = tf.compat.v1.RunOptions(trace_level=tf.compat.v1.RunOptions.NO_TRACE)
+
+                    # tensorboard
+                    run_options = tf.RunOptions(trace_level=tf.RunOptions.NO_TRACE)
                     scalar_summaries = sess.run(model.scalar_summaries,
                                                 feed_dict=feed_dict,
                                                 options=run_options)
                     summary_writer.add_summary(scalar_summaries, global_step)
+
                     # print info
                     print("step {:>6} epoch {:>3}: loss={:1.3f}, epoch sec={:3.0f}, total hrs={:.1f}".format(
                         global_step,
@@ -122,7 +100,6 @@ def main(param2val):
                         (time.time() - global_start) / 3600))
                     sys.stdout.flush()
 
-                # train
                 loss, _ = sess.run([model.nonzero_mean_loss, model.update], feed_dict=feed_dict)
                 global_step += 1
 

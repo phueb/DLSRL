@@ -19,7 +19,7 @@ class Global:
 
 
 class Eval:
-    loss_interval = 100
+    summary_interval = 100
 
     train_data_path = RemoteDirs.data / 'CONLL05/conll05.train.txt'
     dev_data_path = RemoteDirs.data / 'CONLL05/conll05.dev.txt'

@@ -4,6 +4,8 @@ from sklearn.metrics import f1_score, precision_score, recall_score
 
 def shuffle_stack_pad(data, batch_size, shuffle=True):
     """
+    :param shuffle: whether to shuffle data
+    :param batch_size: size batch to use
     :param data: [list of word_id seqs, list of pred_id seqs, list of label_id seqs]
     :return: zero-padded matrices for each list of shape [num_seqs, max_seq_len]
     """
@@ -43,12 +45,12 @@ def get_batches(x1, x2, y, batch_size):
         yield x1_b, x2_b, y_b
 
 
-def make_feed_dict(x1, x2, y, model, keep_prob):
+def make_feed_dict(x1, x2, y, model, keep_prob):  # TODO remove this function for tensorflow v2.0
     lengths = [len(s) - count_zeros_from_end(s) for s in x1]
-    max_batch_len = np.max(lengths)
-    feed_dict = {model.word_ids: x1[:, :max_batch_len],
-                 model.predicate_ids: x2[:, :max_batch_len],
-                 model.label_ids: y[:, :max_batch_len],
+    max_seq_len = np.max(lengths)
+    feed_dict = {model.word_ids: x1[:, :max_seq_len],
+                 model.predicate_ids: x2[:, :max_seq_len],
+                 model.label_ids: y[:, :max_seq_len],
                  model.keep_prob: keep_prob,
                  model.lengths: lengths}
     return feed_dict
@@ -61,16 +63,14 @@ def evaluate(data, model, summary_writer, sess, epoch, global_step):
     x1, x2, y = shuffle_stack_pad(data, batch_size=batch_size, shuffle=False)
     feed_dict = make_feed_dict(x1, x2, y, model, keep_prob=1.0)
 
-    # export confusion matrix
-    summary = sess.run(model.cm_summary, feed_dict=feed_dict)
-    summary_writer.add_summary(summary, global_step)
+    # TODO export confusion matrix - cm_summary
 
     # get predictions  # TODO viterbi decoding? add decoding constraint?
     pred, gold = sess.run([model.nonzero_predicted_label_ids, model.nonzero_label_ids_flat], feed_dict=feed_dict)
 
     # what is model predicting?
     for i, j in zip(gold[:100], pred[:100]):
-        print('a="{}", p="{}"'.format(i, j))
+        print('gold label="{}", predicted label="{}"'.format(i, j))
 
     # calc f1
     print('num labels={:,}'.format(len(gold)))

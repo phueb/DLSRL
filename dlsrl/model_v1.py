@@ -1,9 +1,7 @@
 import tensorflow as tf
 from tensorflow.contrib.rnn import HighwayWrapper, LSTMCell, DropoutWrapper
 from tensorflow.python.ops import array_ops
-from socket import gethostname
-import os
-from pathlib import Path
+
 
 PARALLEL_ITERATIONS = 32
 
