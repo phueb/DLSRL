@@ -45,18 +45,7 @@ def get_batches(x1, x2, y, batch_size):
         yield x1_b, x2_b, y_b
 
 
-def make_feed_dict(x1, x2, y, model, keep_prob):  # TODO remove this function for tensorflow v2.0
-    lengths = [len(s) - count_zeros_from_end(s) for s in x1]
-    max_seq_len = np.max(lengths)
-    feed_dict = {model.word_ids: x1[:, :max_seq_len],
-                 model.predicate_ids: x2[:, :max_seq_len],
-                 model.label_ids: y[:, :max_seq_len],
-                 model.keep_prob: keep_prob,
-                 model.lengths: lengths}
-    return feed_dict
-
-
-def evaluate(data, model, summary_writer, sess, epoch, global_step):
+def evaluate(data, model, epoch):
     # make dev CONLL05
     batch_size = len(data[0])
     assert batch_size <= 4096  # careful with large CONLL05
@@ -73,6 +62,9 @@ def evaluate(data, model, summary_writer, sess, epoch, global_step):
         print('gold label="{}", predicted label="{}"'.format(i, j))
 
     # calc f1
+
+    # TODO use tensorflow f1 metric
+
     print('num labels={:,}'.format(len(gold)))
     print_f1(epoch, 'macro-labels', f1_score(gold, pred, average='macro'))
     print_f1(epoch, 'micro-labels', f1_score(gold, pred, average='micro'))
