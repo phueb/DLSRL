@@ -15,6 +15,9 @@ class Model(tf.keras.Model):
     def __init__(self, params, embeddings, num_labels, name='deep_lstm', **kwargs):
         super(Model, self).__init__(name=name, **kwargs)
 
+        print('Initializing keras model with in size = {} and out size = {}'.format(
+            len(embeddings), num_labels))
+
         self.params = params
         self.embeddings = embeddings
         self.num_labels = num_labels
@@ -68,7 +71,6 @@ class Model(tf.keras.Model):
         res = concatenated
 
         for layer, lstm_cell in enumerate(self.lstm_cells):
-            print('Using LSTM cell in layer {}'.format(layer))
             lstm_cell = self.lstm_cells[layer]
             res = lstm_cell(inputs=res, mask=tf.cast(mask, tf.bool))  # [batch_size, max_seq_len, cell_size]
 

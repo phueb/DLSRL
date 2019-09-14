@@ -7,8 +7,9 @@ import time
 import sys
 import numpy as np
 
-from dlsrl.data_utils import get_data
-from dlsrl.train_utils import get_batches, evaluate, shuffle_stack_pad, count_zeros_from_end
+from dlsrl.data import Data
+from dlsrl.utils import get_batches, shuffle_stack_pad, count_zeros_from_end, make_word2embed
+from dlsrl.eval import evaluate
 from dlsrl.model import Model
 from dlsrl import config
 
@@ -49,19 +50,18 @@ def main(param2val):
         local_job_p.mkdir(parents=True)
 
     # data
-    train_data, dev_data, word_dict, label_dict, embeddings = get_data(
-        params, config.Eval.train_data_path, config.Eval.dev_data_path)
-    sys.stdout.flush()
+    word2embed = make_word2embed(params)
+    data = Data(params, word2embed)
 
     # train loop
     train_start = time.time()
 
     # model
-    deep_lstm = Model(params, embeddings, label_dict.size())
+    deep_lstm = Model(params, data.embeddings, data.num_labels)
     optimizer = tf.optimizers.Adadelta(learning_rate=params.learning_rate,
                                        epsilon=params.epsilon)
 
-    # TODO eval before trianing
+    # TODO eval before training
 
     loss_metric = tf.keras.metrics.Mean()
     cross_entropy = tf.keras.losses.SparseCategoricalCrossentropy()  # performs softmax internally
@@ -74,16 +74,16 @@ def main(param2val):
         x1, x2, y = shuffle_stack_pad(train_data, params.batch_size)
         for step, (x1_b, x2_b, y_b) in enumerate(get_batches(x1, x2, y, params.batch_size)):
 
-            # pre-processing
+            # pre-processing  # TODO use tf.data
             lengths = [len(row) - count_zeros_from_end(row) for row in x1_b]
             max_seq_len = np.max(lengths)
             word_ids = x1_b[:, :max_seq_len]
             predicate_ids = x2_b[:, :max_seq_len]
             mask = np.clip(x1_b, 0, 1)
+            flat_label_ids = y_b[:, :max_seq_len].reshape([-1])
 
             with tf.GradientTape() as tape:
                 logits = deep_lstm(word_ids, predicate_ids, mask)
-                flat_label_ids = y_b[:, :max_seq_len].reshape([-1])
                 loss = cross_entropy(flat_label_ids, logits)  # TODO mask loss function?
 
             grads = tape.gradient(loss, deep_lstm.trainable_weights)
@@ -93,7 +93,7 @@ def main(param2val):
             loss_metric(loss)
             if step % 1 == 0:
                 print('step {:<6}: mean loss = {:2.2f} minutes elapsed = {:<3}'.format(
-                    step, loss_metric.result(), time.time() - train_start // 60 ))
+                    step, loss_metric.result(), (time.time() - train_start) // 60))
 
         raise SystemExit('Completed first epoch')
 
