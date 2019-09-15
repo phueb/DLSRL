@@ -8,7 +8,7 @@ import sys
 import numpy as np
 
 from dlsrl.data import Data
-from dlsrl.utils import get_batches, shuffle_stack_pad, count_zeros_from_end, make_word2embed
+from dlsrl.utils import get_batches, shuffle_stack_pad, count_zeros_from_end
 from dlsrl.eval import evaluate
 from dlsrl.model import Model
 from dlsrl import config
@@ -50,29 +50,33 @@ def main(param2val):
         local_job_p.mkdir(parents=True)
 
     # data
-    word2embed = make_word2embed(params)
-    data = Data(params, word2embed)
-
-    # train loop
-    train_start = time.time()
+    data = Data(params)
 
     # model
     deep_lstm = Model(params, data.embeddings, data.num_labels)
     optimizer = tf.optimizers.Adadelta(learning_rate=params.learning_rate,
                                        epsilon=params.epsilon)
 
-    # TODO eval before training
-
     loss_metric = tf.keras.metrics.Mean()
     cross_entropy = tf.keras.losses.SparseCategoricalCrossentropy()  # performs softmax internally
+
+    # train loop
+    train_start = time.time()
     for epoch in range(params.max_epochs):
         print('Epoch: {}'.format(epoch))
 
         # TODO save checkpoint from which to load model
         ckpt_p = local_job_p / "epoch_{}.ckpt".format(epoch)
 
-        x1, x2, y = shuffle_stack_pad(train_data, params.batch_size)
-        for step, (x1_b, x2_b, y_b) in enumerate(get_batches(x1, x2, y, params.batch_size)):
+        # prepare data for epoch
+        x1, x2, y = shuffle_stack_pad(data.train_data, params.batch_size)  # returns int32
+
+        # train on batches
+        for step, (x1_b, x2_b, y_b) in enumerate(get_batches(x1, x2, y, params.batch_size)):  # returns int32
+
+            print(x1_b.dtype)
+            print(x2_b.dtype)
+            print(y_b.dtype)
 
             # pre-processing  # TODO use tf.data
             lengths = [len(row) - count_zeros_from_end(row) for row in x1_b]

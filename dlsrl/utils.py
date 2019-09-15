@@ -1,36 +1,4 @@
 import numpy as np
-import random
-
-from dlsrl import config
-
-
-def make_word2embed(params):
-    glove_p = config.RemoteDirs.root / config.Data.glove_path
-    assert str(params.embed_size) in glove_p.name
-    print('Loading word embeddings at:')
-    print(glove_p)
-
-    res = dict()
-    with glove_p.open('rb') as f:
-        for line in f:
-            info = line.strip().split()
-            word = info[0]
-            embedding = np.array([float(r) for r in info[1:]])
-            res[word] = embedding
-
-    embedding_size = next(iter(res.items()))[1].shape[0]
-    print('Glove embedding size={}'.format(embedding_size))
-    assert embedding_size < params.cell_size - 1  # random weights will be added to make shape equal to cell_size
-
-    # add random vectors to non-word symbols
-    res[config.Data.start_word] = [random.gauss(0, 0.01) for _ in range(embedding_size)]
-    res[config.Data.end_word] = [random.gauss(0, 0.01) for _ in range(embedding_size)]
-    if config.Data.unk_word not in res:
-        res[config.Data.unk_word] = [random.gauss(0, 0.01) for _ in range(embedding_size)]
-    if config.Data.pad_word not in res:
-        res[config.Data.pad_word] = [random.gauss(0, 0.01) for _ in range(embedding_size)]
-
-    return res
 
 
 def shuffle_stack_pad(data, batch_size, shuffle=True):
@@ -41,6 +9,11 @@ def shuffle_stack_pad(data, batch_size, shuffle=True):
     :return: zero-padded matrices for each list of shape [num_seqs, max_seq_len]
     """
     shape0 = len(data[1])
+
+    # TODO debugging
+    print('shape0')
+    print(shape0)
+
     num_excluded = shape0 % batch_size
     print('Excluding {} sequences due to fixed batch size'.format(num_excluded))
     shape0_adj = shape0 - num_excluded
