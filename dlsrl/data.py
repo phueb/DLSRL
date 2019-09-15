@@ -25,7 +25,7 @@ class Data:
 
         if params.use_se_marker:
             self.sorted_words += [config.Data.start_word, config.Data.end_word]
-            self.sorted_labels+= [config.Data.start_label, config.Data.end_label]
+            self.sorted_labels += [config.Data.start_label, config.Data.end_label]
 
         self.w2id = OrderedDict()  # word -> ID
         for n, w in enumerate(self.sorted_words):
@@ -40,7 +40,7 @@ class Data:
         print('/////////////////////////////')
         print('Found {:,} training propositions ...'.format(self.num_train_propositions))
         print('Found {:,} dev propositions ...'.format(self.num_dev_propositions))
-        print("Extracted {:,} train+dev words and {:,} tags".format(self.num_words, self.num_labels))
+        print("Extracted {:,} train+dev words and {:,} labels".format(self.num_words, self.num_labels))
 
         for name, propositions in zip(['train', 'dev'],
                                       [self.train_propositions, self.dev_propositions]):
@@ -78,7 +78,7 @@ class Data:
 
     @property
     def num_dev_propositions(self):
-        return len(self.train_propositions)
+        return len(self.dev_propositions)
 
     def get_propositions_from_file(self, file_path):
         """

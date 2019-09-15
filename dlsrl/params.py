@@ -2,7 +2,7 @@
 
 param2default = {
     "batch_size": 128,
-    "use_se_marker": False,
+    "use_se_marker": False,  # sentence start and end symbols
     "embed_size": "100",
     "cell_size": 256,
     "num_layers": 2,  # TODO change back to 8

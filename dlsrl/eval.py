@@ -1,34 +1,4 @@
 import numpy as np
-from sklearn.metrics import f1_score
-
-from dlsrl.utils import shuffle_stack_pad
-
-
-def evaluate(data, model, epoch):
-    # make dev CONLL05
-    batch_size = len(data[0])
-    assert batch_size <= 4096  # careful with large CONLL05
-    x1, x2, y = shuffle_stack_pad(data, batch_size=batch_size, shuffle=False)
-    feed_dict = make_feed_dict(x1, x2, y, model, keep_prob=1.0)
-
-    # TODO export confusion matrix - cm_summary
-
-    # get predictions  # TODO viterbi decoding? add decoding constraint?
-    pred, gold = sess.run([model.nonzero_predicted_label_ids, model.nonzero_label_ids_flat], feed_dict=feed_dict)
-
-    # what is model predicting?
-    for i, j in zip(gold[:100], pred[:100]):
-        print('gold label="{}", predicted label="{}"'.format(i, j))
-
-    # calc f1
-
-    # TODO use tensorflow f1 metric
-
-    print('num labels={:,}'.format(len(gold)))
-    print_f1(epoch, 'macro-labels', f1_score(gold, pred, average='macro'))
-    print_f1(epoch, 'micro-labels', f1_score(gold, pred, average='micro'))
-    print_f1(epoch, 'args-exclude1', f1_conll05(gold, pred, feed_dict[model.lengths], True))
-    print_f1(epoch, 'args-include1', f1_conll05(gold, pred, feed_dict[model.lengths], False))
 
 
 def print_f1(epoch, method, f1):

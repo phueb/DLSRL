@@ -87,10 +87,22 @@ class Model(tf.keras.Model):
         res = self.to_logits(encoded_2d)  # need [num_words, num_labels]
         return res
 
+    # ------------------------------------------------------- unrelated to training
+
     @tf.function
-    def predict_label_ids(self, softmax):
-        nonzero_predicted_label_ids = tf.cast(tf.argmax(input=softmax, axis=1), tf.int32)
-        return nonzero_predicted_label_ids
+    def predict_label_ids(self, word_ids, predicate_ids, mask):
+        """
+
+        :param word_ids:
+        :param predicate_ids:
+        :param mask:
+        :return: label IDs (one for each word ID), [num_words, num_labels]
+        """
+        embedded = self.embed(word_ids)
+        encoded = self.encode_with_lstm(embedded, predicate_ids, mask)
+        logits = self.calc_logits(encoded)
+        res = tf.cast(tf.argmax(input=tf.nn.softmax(logits), axis=1), tf.int32)
+        return res
 
     def write_summaries(self):
         tf.compat.v1.summary.scalar('nonzero_accuracy',

@@ -40,6 +40,8 @@ class Data:
 
 
 class Eval:
+    loss_interval = 100
     summary_interval = 100
+    dev_batch_size = 2048  # conll05 dev data has 3,248 propositions
 
 

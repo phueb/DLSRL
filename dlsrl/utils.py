@@ -9,15 +9,11 @@ def shuffle_stack_pad(data, batch_size, shuffle=True):
     :return: zero-padded matrices for each list of shape [num_seqs, max_seq_len]
     """
     shape0 = len(data[1])
-
-    # TODO debugging
-    print('shape0')
-    print(shape0)
-
     num_excluded = shape0 % batch_size
     print('Excluding {} sequences due to fixed batch size'.format(num_excluded))
     shape0_adj = shape0 - num_excluded
     shape1 = np.max([len(i) for i in data[1]])
+
     mats = [np.zeros((shape0_adj, shape1)).astype(np.int32) for _ in range(3)]
     if shuffle:
         row_ids = np.random.choice(shape0, shape0_adj, replace=False)
