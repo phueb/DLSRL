@@ -49,7 +49,7 @@ class Model(tf.keras.Model):
                                                   input_shape=(None, params.cell_size),
                                                   activation='softmax')  # TODO test softmax
 
-    def call(self, word_ids, predicate_ids):
+    def call(self, word_ids, predicate_ids, training):
         embedded = self.embedding(word_ids)
         # returns [batch_size, max_seq_len, embed_size]
         to_concat = tf.expand_dims(tf.cast(predicate_ids, tf.float32), -1)
@@ -57,9 +57,9 @@ class Model(tf.keras.Model):
         # returns [batch_size, max_seq_len, embed_size + 1]
 
         mask = self.embedding.compute_mask(word_ids)
-        encoded1 = self.lstm1(concatenated, mask=mask)
+        encoded1 = self.lstm1(concatenated, mask=mask, training=training)
         # returns [batch_size, max_seq_len, cell_size]
-        encoded2 = self.lstm2(encoded1, mask=mask)  # TODO backwards mask?
+        encoded2 = self.lstm2(encoded1, mask=mask, training=training)  # TODO backwards mask?
         # returns [batch_size, max_seq_len, cell_size]
 
         num_words = tf.size(word_ids)

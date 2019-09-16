@@ -10,7 +10,7 @@ import numpy as np
 
 from dlsrl.data import Data
 from dlsrl.utils import get_batches, shuffle_stack_pad, count_zeros_from_end
-from dlsrl.eval import print_f1
+from dlsrl.eval import print_f1, f1_conll05
 from dlsrl.model import Model
 from dlsrl import config
 
@@ -88,7 +88,7 @@ def main(param2val):
 
         # TODO do not use dropout when evaluating model
 
-        softmax_probs = deep_lstm(dev_x1, dev_x2)
+        softmax_probs = deep_lstm(dev_x1, dev_x2, training=False)
         pred_label_ids = np.argmax(softmax_probs, axis=1)
         gold_label_ids = dev_y.flatten()  # reshape from [batch-size, max_seq_len] to [num_words]
 
@@ -99,7 +99,7 @@ def main(param2val):
         y_true = []
         y_pred = []
 
-        # remove instances in which the gold label is an "O" (which represents padding and words without a label)
+        # remove padding (but not "O" labels for words that are "outside" arguments)
         for g, p in zip(gold_label_ids, pred_label_ids):
             if g != 0:
                 y_true.append(g)
@@ -112,22 +112,19 @@ def main(param2val):
         print_f1(epoch, 'weight', f1_score(y_true, y_pred, average='weighted'))
         print_f1(epoch, 'macro ', f1_score(y_true, y_pred, average='macro'))
         print_f1(epoch, 'micro ', f1_score(y_true, y_pred, average='micro'))
+
+        # evaluate f1 conll05 style: compare arguments rather than single labels for single words
+        lengths = [len(row) - count_zeros_from_end(row) for row in dev_x1]
+        print_f1(epoch, 'conll-05', f1_conll05(y_true, y_pred, lengths))
         print('====================================================')
         print()
 
         # train on batches
         for step, (x1_b, x2_b, y_b) in enumerate(get_batches(train_x1, train_x2, train_y, params.batch_size)):
 
-            # pre-processing  # TODO use tf.data
-            lengths = [len(row) - count_zeros_from_end(row) for row in x1_b]
-            max_seq_len = np.max(lengths)
-            word_ids = x1_b[:, :max_seq_len]
-            predicate_ids = x2_b[:, :max_seq_len]
-            flat_label_ids = y_b[:, :max_seq_len].reshape([-1])
-
             with tf.GradientTape() as tape:
-                softmax_probs = deep_lstm(word_ids, predicate_ids)  # [num_words, num_labels]
-                loss = cross_entropy(flat_label_ids, softmax_probs)  # TODO mask loss function?
+                softmax_probs = deep_lstm(x1_b, x2_b, training=True)  # returns [num_words, num_labels]
+                loss = cross_entropy(y_b.reshape([-1]), softmax_probs)  # TODO mask loss function?
 
             grads = tape.gradient(loss, deep_lstm.trainable_weights)
             optimizer.apply_gradients(zip(grads, deep_lstm.trainable_weights))

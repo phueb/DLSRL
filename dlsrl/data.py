@@ -21,7 +21,7 @@ class Data:
         self.sorted_labels = sorted(self._label_set)
 
         self.sorted_words = [config.Data.pad_word, config.Data.unk_word] + self.sorted_words  # pad must have id=0
-        self.sorted_labels = [config.Data.pad_label, config.Data.unk_label] + self.sorted_labels
+        self.sorted_labels = [config.Data.pad_label] + self.sorted_labels
 
         if params.use_se_marker:
             self.sorted_words += [config.Data.start_word, config.Data.end_word]
@@ -103,7 +103,7 @@ class Data:
                     left_input = [w.lower() for w in left_input]
 
                 if not config.Data.bio_tags:
-                    right_input = [l.lstrip('B').lstrip('I') for l in right_input]
+                    right_input = [l.lstrip('-B').lstrip('-I') for l in right_input]
 
                 # predicate
                 predicate = int(left_input[0])

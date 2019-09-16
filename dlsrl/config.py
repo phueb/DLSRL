@@ -24,7 +24,7 @@ class Data:
     """
 
     lowercase = True  # True gives strong performance boost
-    bio_tags = False  # TODO testing
+    bio_tags = False  # the "O" tag is still used to label "outside" words if set to False
 
     start_word = '<S>'
     start_label = 'START_LABEL'  # TODO do not predict these
@@ -35,7 +35,7 @@ class Data:
     unk_word = '<UNKNOWN>'  # TODO use this for test data - but don't use an UNKNOWN_LABEL
 
     pad_word = '<PAD>'
-    pad_label = 'O'  # using the letter "O" because it is used to signal unlabeled word
+    pad_label = 'PAD_LABEL'  # do not use the letter "O" because evaluation requires only removing padding
 
     train_data_path = RemoteDirs.data / 'CONLL05/conll05.train.txt'
     dev_data_path = RemoteDirs.data / 'CONLL05/conll05.dev.txt'
