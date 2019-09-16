@@ -82,8 +82,9 @@ def main(param2val):
 
         # TODO use tensorflow f1 metric
 
-        mask = np.clip(dev_x1, 0, 1)
-        softmax_probs = deep_lstm(dev_x1, dev_x2, mask)
+        # TODO do not use dropout when evaluating model
+
+        softmax_probs = deep_lstm(dev_x1, dev_x2)
         pred_label_ids = np.argmax(softmax_probs, axis=1)
         gold_label_ids = dev_y.flatten()  # reshape from [batch-size, max_seq_len] to [num_words]
 
@@ -117,11 +118,10 @@ def main(param2val):
             max_seq_len = np.max(lengths)
             word_ids = x1_b[:, :max_seq_len]
             predicate_ids = x2_b[:, :max_seq_len]
-            mask = np.clip(x1_b, 0, 1).astype(np.bool)
             flat_label_ids = y_b[:, :max_seq_len].reshape([-1])
 
             with tf.GradientTape() as tape:
-                softmax_probs = deep_lstm(word_ids, predicate_ids, mask)  # [num_words, num_labels]
+                softmax_probs = deep_lstm(word_ids, predicate_ids)  # [num_words, num_labels]
                 loss = cross_entropy(flat_label_ids, softmax_probs)  # TODO mask loss function?
 
             grads = tape.gradient(loss, deep_lstm.trainable_weights)

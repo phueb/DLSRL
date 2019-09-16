@@ -22,7 +22,7 @@ class Model(tf.keras.Model):
                                                    embeddings_initializer=tf.keras.initializers.constant(embeddings),
                                                    mask_zero=True)  # TODO test mask_zero
 
-        # TODO stack 8 LSTMs + residual connections + dropout
+        # TODO stack 8 LSTMs + residual connections
 
         self.lstm1 = tf.keras.layers.LSTM(params.cell_size,
                                           activation='tanh',
@@ -49,17 +49,17 @@ class Model(tf.keras.Model):
                                                   input_shape=(None, params.cell_size),
                                                   activation='softmax')  # TODO test softmax
 
-    def call(self, word_ids, predicate_ids, mask):
+    def call(self, word_ids, predicate_ids):
         embedded = self.embedding(word_ids)
         # returns [batch_size, max_seq_len, embed_size]
         to_concat = tf.expand_dims(tf.cast(predicate_ids, tf.float32), -1)
         concatenated = tf.concat([embedded, to_concat], axis=2)
         # returns [batch_size, max_seq_len, embed_size + 1]
 
-        bool_mask = tf.cast(mask, tf.bool)
-        encoded1 = self.lstm1(concatenated, mask=bool_mask)
+        mask = self.embedding.compute_mask()
+        encoded1 = self.lstm1(concatenated, mask=mask)
         # returns [batch_size, max_seq_len, cell_size]
-        encoded2 = self.lstm2(encoded1, mask=bool_mask)  # TODO backwards mask?
+        encoded2 = self.lstm2(encoded1, mask=mask)  # TODO backwards mask?
         # returns [batch_size, max_seq_len, cell_size]
 
         num_words = tf.size(word_ids)
