@@ -5,7 +5,7 @@ def print_f1(epoch, method, f1):
     print('epoch {:>3} method={} | f1={:.2f}'.format(epoch, method, f1))
 
 
-def f1_conll05(gold_label_ids, pred_label_ids, lengths):  # TODO update this function
+def f1_conll05(gold_label_ids, pred_label_ids, lengths):
     """
 
     compute res for arguments (spans of the same label) rather than single labels.
@@ -18,11 +18,9 @@ def f1_conll05(gold_label_ids, pred_label_ids, lengths):  # TODO update this fun
     :return:
     """
 
-    print(sum(lengths))
-    print(len(gold_label_ids))
-    print(len(pred_label_ids))
+    # number of labels must add up to total sum of sentence lengths (checks if padding has been removed)
     assert sum(lengths) == len(gold_label_ids)
-    assert sum(lengths) == len(pred_label_ids)  # TODO what exactly do i feed into this function? only right-zeros removed?
+    assert sum(lengths) == len(pred_label_ids)
 
     hits = 1
     over_predictions = 1

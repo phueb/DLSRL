@@ -51,7 +51,7 @@ def main(param2val):
         local_job_p.mkdir(parents=True)
 
     # data
-    data = Data(params)  # TODO remove BIO tags?
+    data = Data(params)  # TODO make tf.data.Dataset?
 
     # model
     deep_lstm = Model(params, data.embeddings, data.num_labels)
@@ -65,8 +65,6 @@ def main(param2val):
 
     cross_entropy = tf.keras.losses.SparseCategoricalCrossentropy()  # performs softmax internally
 
-    # TODO use model.fit() instead of custom training loop? or fit_generator() ?
-
     # train loop
     train_start = time.time()
     for epoch in range(params.max_epochs):
@@ -74,8 +72,6 @@ def main(param2val):
 
         # TODO save checkpoint from which to load model
         ckpt_p = local_job_p / "epoch_{}.ckpt".format(epoch)
-
-        # TODO make tf.data.Dataset?
 
         # prepare data for epoch
         train_x1, train_x2, train_y = shuffle_stack_pad(data.train,
@@ -85,8 +81,6 @@ def main(param2val):
                                                   shuffle=False)
 
         # TODO use tensorflow f1 metric
-
-        # TODO do not use dropout when evaluating model
 
         softmax_probs = deep_lstm(dev_x1, dev_x2, training=False)
         pred_label_ids = np.argmax(softmax_probs, axis=1)
@@ -124,7 +118,8 @@ def main(param2val):
 
             with tf.GradientTape() as tape:
                 softmax_probs = deep_lstm(x1_b, x2_b, training=True)  # returns [num_words, num_labels]
-                loss = cross_entropy(y_b.reshape([-1]), softmax_probs)  # TODO mask loss function?
+                loss = cross_entropy(y_b.reshape([-1]), softmax_probs)
+                # no need to mask loss function because padding is masked, and "O" labels should be learned
 
             grads = tape.gradient(loss, deep_lstm.trainable_weights)
             optimizer.apply_gradients(zip(grads, deep_lstm.trainable_weights))
@@ -133,11 +128,6 @@ def main(param2val):
             if step % config.Eval.loss_interval == 0:
                 print('step {:<6}: loss = {:2.2f} minutes elapsed = {:<3}'.format(
                     step, loss, (time.time() - train_start) // 60))
-
-
-
-            # print_f1(epoch, 'args-exclude1', f1_conll05(gold, pred, lengths, True))
-            # print_f1(epoch, 'args-include1', f1_conll05(gold, pred, lengths, False))
 
     #  move events file to shared drive
     events_p = list(local_job_p.glob('*events*'))[0]
