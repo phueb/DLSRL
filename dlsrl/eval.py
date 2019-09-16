@@ -5,7 +5,7 @@ def print_f1(epoch, method, f1):
     print('epoch {:>3} method={} | f1={:.2f}'.format(epoch, method, f1))
 
 
-def f1_conll05(gold, pred, lengths, exclude_label_one=True):
+def f1_conll05(gold, pred, lengths, exclude_label_one=True):  # TODO update this function
     """
 
     :param gold: int32, [num_words]
@@ -22,7 +22,7 @@ def f1_conll05(gold, pred, lengths, exclude_label_one=True):
     misses = 1
     start_p = 0
     for l in lengths:
-        # get single prop + exclude label=1 (this labels words outside arguments)
+        # get single sentence (by getting all elements up to a certain length corresponding to a sentence)
         gold_prop = gold[start_p:start_p + l]
         pred_prop = pred[start_p:start_p + l]
         start_p += l

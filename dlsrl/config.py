@@ -19,6 +19,10 @@ class Global:
 
 
 class Data:
+    """
+    # the letter "O" is used to mark any words without labels as "outside" in conll05
+    """
+
     lowercase = True  # TODO use
 
     start_word = '<S>'
@@ -27,21 +31,21 @@ class Data:
     end_word = '</S>'
     end_label = 'END_LABEL'
 
-    unk_word = '*UNKNOWN*'
-    unk_label = 'O'  # must match CONLL05 file
+    unk_word = '<UNKNOWN>'
+    unk_label = 'UNK_LABEL'
 
-    pad_word = '*PAD*'
-    pad_label = 'PAD_LABEL'
+    pad_word = '<PAD>'
+    pad_label = 'O'  # using the letter "O" because it is used to signal unlabeled word
 
     train_data_path = RemoteDirs.data / 'CONLL05/conll05.train.txt'
     dev_data_path = RemoteDirs.data / 'CONLL05/conll05.dev.txt'
     test_data_path = RemoteDirs.data / 'CONLL05/conll05.test.wsj.txt'
     glove_path = RemoteDirs.data / 'glove.6B.100d.txt'
 
+    verbose = True
+
 
 class Eval:
     loss_interval = 100
     summary_interval = 100
-    dev_batch_size = 2048  # conll05 dev data has 3,248 propositions
-
 

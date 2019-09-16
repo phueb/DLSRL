@@ -4,7 +4,7 @@ import numpy as np
 from dlsrl import config
 
 
-class Data:
+class Dataset:
 
     def __init__(self, params):
         self.params = params
@@ -34,6 +34,8 @@ class Data:
         self.l2id = OrderedDict()  # label -> ID
         for n, l in enumerate(self.sorted_labels):
             self.l2id[l] = n
+            if config.Data.verbose:
+                print('"{:<12}" -> {:<4}'.format(l, n))
 
         # -------------------------------------------------------- console
 
@@ -58,11 +60,6 @@ class Data:
 
         self.train_data = self.to_ids(self.train_propositions)
         self.dev_data = self.to_ids(self.dev_propositions)
-
-        # TODO make infinite generator (yields batches of ids) - or make tf.data.Dataset?
-
-
-
 
     @property
     def num_labels(self):
