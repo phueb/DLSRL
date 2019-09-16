@@ -56,7 +56,7 @@ class Model(tf.keras.Model):
         concatenated = tf.concat([embedded, to_concat], axis=2)
         # returns [batch_size, max_seq_len, embed_size + 1]
 
-        mask = self.embedding.compute_mask()
+        mask = self.embedding.compute_mask(word_ids)
         encoded1 = self.lstm1(concatenated, mask=mask)
         # returns [batch_size, max_seq_len, cell_size]
         encoded2 = self.lstm2(encoded1, mask=mask)  # TODO backwards mask?
