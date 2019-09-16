@@ -23,7 +23,7 @@ class Data:
     # the letter "O" is used to mark any words without labels as "outside" in conll05
     """
 
-    lowercase = True  # TODO use
+    lowercase = True  # True gives strong performance boost
 
     start_word = '<S>'
     start_label = 'START_LABEL'  # TODO do not predict these
@@ -48,4 +48,7 @@ class Data:
 class Eval:
     loss_interval = 100
     summary_interval = 100
+    verbose = False
+
+    use_bio_tags = False  # TODO testing
 

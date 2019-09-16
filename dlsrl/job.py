@@ -8,7 +8,7 @@ import sys
 from sklearn.metrics import f1_score
 import numpy as np
 
-from dlsrl.dataset import Dataset
+from dlsrl.data import Data
 from dlsrl.utils import get_batches, shuffle_stack_pad, count_zeros_from_end
 from dlsrl.eval import print_f1
 from dlsrl.model import Model
@@ -51,10 +51,14 @@ def main(param2val):
         local_job_p.mkdir(parents=True)
 
     # data
-    dataset = Dataset(params)  # TODO remove BIO tags?
+    data = Data(params)  # TODO remove BIO tags?
 
     # model
-    deep_lstm = Model(params, dataset.embeddings, dataset.num_labels)
+    deep_lstm = Model(params, data.embeddings, data.num_labels)
+
+    # deep_lstm.compile(optimizer=tf.optimizers.Adadelta(learning_rate=params.learning_rate,
+    #                                    epsilon=params.epsilon),
+    #                   loss=tf.keras.losses.SparseCategoricalCrossentropy())
 
     optimizer = tf.optimizers.Adadelta(learning_rate=params.learning_rate,
                                        epsilon=params.epsilon)
@@ -74,9 +78,9 @@ def main(param2val):
         # TODO make tf.data.Dataset?
 
         # prepare data for epoch
-        train_x1, train_x2, train_y = shuffle_stack_pad(dataset.train_data,
+        train_x1, train_x2, train_y = shuffle_stack_pad(data.train,
                                                         batch_size=params.batch_size)  # returns int32
-        dev_x1, dev_x2, dev_y = shuffle_stack_pad(dataset.dev_data,
+        dev_x1, dev_x2, dev_y = shuffle_stack_pad(data.dev,
                                                   batch_size=params.batch_size,
                                                   shuffle=False)
 
@@ -100,7 +104,8 @@ def main(param2val):
             if g != 0:
                 y_true.append(g)
                 y_pred.append(p)
-                print('gold={:<3} pred={:<3}'.format(g, p))
+                if config.Eval.verbose:
+                    print('gold={:<3} pred={:<3}'.format(g, p))
         print('Number of comparisons after excluding "O" labels={}'.format(len(y_true)))
 
         # f1_score expects 1D label ids (e.g. gold=[0, 2, 1, 0], pred=[0, 1, 1, 0])

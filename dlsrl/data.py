@@ -4,7 +4,7 @@ import numpy as np
 from dlsrl import config
 
 
-class Dataset:
+class Data:
 
     def __init__(self, params):
         self.params = params
@@ -64,8 +64,8 @@ class Dataset:
 
         # -------------------------------------------------------- prepare data structures for training
 
-        self.train_data = self.to_ids(self.train_propositions)
-        self.dev_data = self.to_ids(self.dev_propositions)
+        self.train = self.to_ids(self.train_propositions)
+        self.dev = self.to_ids(self.dev_propositions)
 
     @property
     def num_labels(self):
@@ -94,12 +94,13 @@ class Dataset:
         with file_path.open('r') as f:
 
             for line in f.readlines():
+
                 inputs = line.strip().split('|||')
                 left_input = inputs[0].strip().split()
+                right_input = inputs[1].strip().split()
 
-                # If gold tags are not provided, create a sequence of dummy tags.
-                right_input = inputs[1].strip().split() if len(inputs) > 1 \
-                    else [config.Data.unk_label for _ in left_input[1:]]
+                if config.Data.lowercase:  # TODO test
+                    right_input = [w.lower() for w in right_input]
 
                 # predicate
                 predicate = int(left_input[0])
@@ -114,8 +115,6 @@ class Dataset:
 
                 self._word_set.update(words)
                 self._label_set.update(labels)
-
-                # TODO where to lower-case?
 
                 propositions.append((words, predicate, labels))
 
