@@ -24,6 +24,7 @@ class Data:
     """
 
     lowercase = True  # True gives strong performance boost
+    bio_tags = False  # TODO testing
 
     start_word = '<S>'
     start_label = 'START_LABEL'  # TODO do not predict these
@@ -31,8 +32,7 @@ class Data:
     end_word = '</S>'
     end_label = 'END_LABEL'
 
-    unk_word = '<UNKNOWN>'
-    unk_label = 'UNK_LABEL'
+    unk_word = '<UNKNOWN>'  # TODO use this for test data - but don't use an UNKNOWN_LABEL
 
     pad_word = '<PAD>'
     pad_label = 'O'  # using the letter "O" because it is used to signal unlabeled word
@@ -50,5 +50,5 @@ class Eval:
     summary_interval = 100
     verbose = False
 
-    use_bio_tags = False  # TODO testing
+
 

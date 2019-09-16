@@ -99,8 +99,11 @@ class Data:
                 left_input = inputs[0].strip().split()
                 right_input = inputs[1].strip().split()
 
-                if config.Data.lowercase:  # TODO test
-                    right_input = [w.lower() for w in right_input]
+                if config.Data.lowercase:
+                    left_input = [w.lower() for w in left_input]
+
+                if not config.Data.bio_tags:
+                    right_input = [l.lstrip('B').lstrip('I') for l in right_input]
 
                 # predicate
                 predicate = int(left_input[0])
