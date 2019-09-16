@@ -2,7 +2,7 @@ import numpy as np
 
 
 def print_f1(epoch, method, f1):
-    print('epoch {:>3} method={} | f1={:.2f}'.format(epoch, method, f1))
+    print('epoch {:>3} average={} | f1={:.2f}'.format(epoch, method, f1))
 
 
 def f1_conll05(gold, pred, lengths, exclude_label_one=True):  # TODO update this function

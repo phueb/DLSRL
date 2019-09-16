@@ -75,14 +75,14 @@ def main(param2val):
 
         # prepare data for epoch
         train_x1, train_x2, train_y = shuffle_stack_pad(dataset.train_data,
-                                                        batch_size=params.batch_size)  # returns float32
+                                                        batch_size=params.batch_size)  # returns int32
         dev_x1, dev_x2, dev_y = shuffle_stack_pad(dataset.dev_data,
                                                   batch_size=params.batch_size,
                                                   shuffle=False)
 
         # TODO use tensorflow f1 metric
 
-        mask = np.clip(dev_x1, 0, 1).astype(np.bool)
+        mask = np.clip(dev_x1, 0, 1)
         softmax_probs = deep_lstm(dev_x1, dev_x2, mask)
         pred_label_ids = np.argmax(softmax_probs, axis=1)
         gold_label_ids = dev_y.flatten()  # reshape from [batch-size, max_seq_len] to [num_words]
@@ -103,9 +103,9 @@ def main(param2val):
         print('Number of comparisons after excluding "O" labels={}'.format(len(y_true)))
 
         # f1_score expects 1D label ids (e.g. gold=[0, 2, 1, 0], pred=[0, 1, 1, 0])
-        print_f1(epoch, 'average=weight', f1_score(y_true, y_pred, average='weighted'))
-        print_f1(epoch, 'average=macro ', f1_score(y_true, y_pred, average='macro'))
-        print_f1(epoch, 'average=micro ', f1_score(y_true, y_pred, average='micro'))
+        print_f1(epoch, 'weight', f1_score(y_true, y_pred, average='weighted'))
+        print_f1(epoch, 'macro ', f1_score(y_true, y_pred, average='macro'))
+        print_f1(epoch, 'micro ', f1_score(y_true, y_pred, average='micro'))
         print('====================================================')
         print()
 

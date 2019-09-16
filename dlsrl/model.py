@@ -22,7 +22,7 @@ class Model(tf.keras.Model):
                                                    embeddings_initializer=tf.keras.initializers.constant(embeddings),
                                                    mask_zero=True)  # TODO test mask_zero
 
-        # TODO stack 8 LSTMs + residual connections
+        # TODO stack 8 LSTMs + residual connections + dropout
 
         self.lstm1 = tf.keras.layers.LSTM(params.cell_size,
                                           activation='tanh',
@@ -30,8 +30,8 @@ class Model(tf.keras.Model):
                                           use_bias=True,
                                           kernel_initializer='glorot_uniform',
                                           recurrent_initializer='orthogonal',  # TODO orthonormal?
-                                          dropout=1 - params.keep_prob,
-                                          recurrent_dropout=0.0,
+                                          dropout=0.0,
+                                          recurrent_dropout=0.0,  # TODO recurrent dropout?
                                           return_sequences=True,
                                           go_backwards=False)
         self.lstm2 = tf.keras.layers.LSTM(params.cell_size,
@@ -41,7 +41,7 @@ class Model(tf.keras.Model):
                                           kernel_initializer='glorot_uniform',
                                           recurrent_initializer='orthogonal',  # TODO orthonormal?
                                           dropout=1 - params.keep_prob,
-                                          recurrent_dropout=0.0,
+                                          recurrent_dropout=0.0,  # using recurrent dropout doesn't work
                                           return_sequences=True,
                                           go_backwards=False)  # TODO implement bi-directional
 
@@ -52,12 +52,14 @@ class Model(tf.keras.Model):
     def call(self, word_ids, predicate_ids, mask):
         embedded = self.embedding(word_ids)
         # returns [batch_size, max_seq_len, embed_size]
-        concatenated = tf.concat([embedded, tf.expand_dims(predicate_ids, -1)], axis=2)
+        to_concat = tf.expand_dims(tf.cast(predicate_ids, tf.float32), -1)
+        concatenated = tf.concat([embedded, to_concat], axis=2)
         # returns [batch_size, max_seq_len, embed_size + 1]
 
-        encoded1 = self.lstm1(concatenated, mask=mask)
+        bool_mask = tf.cast(mask, tf.bool)
+        encoded1 = self.lstm1(concatenated, mask=bool_mask)
         # returns [batch_size, max_seq_len, cell_size]
-        encoded2 = self.lstm2(encoded1, mask=mask)  # TODO backwards mask?
+        encoded2 = self.lstm2(encoded1, mask=bool_mask)  # TODO backwards mask?
         # returns [batch_size, max_seq_len, cell_size]
 
         num_words = tf.size(word_ids)

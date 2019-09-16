@@ -29,10 +29,16 @@ class Dataset:
 
         self.w2id = OrderedDict()  # word -> ID
         for n, w in enumerate(self.sorted_words):
+            if w in self.w2id:
+                raise SystemError('Trying to add word to w2id, but word is already in w2id')
             self.w2id[w] = n
 
         self.l2id = OrderedDict()  # label -> ID
         for n, l in enumerate(self.sorted_labels):
+            if l in self.l2id:
+                print('"{}" is already in l2id. Skipping'.format(l))
+                continue  # the letter "O" should be assigned id=0 instead of last id
+                # (this prevents overwriting existing entry with one pointing to the last id)
             self.l2id[l] = n
             if config.Data.verbose:
                 print('"{:<12}" -> {:<4}'.format(l, n))
