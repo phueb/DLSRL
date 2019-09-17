@@ -131,7 +131,7 @@ class Data:
 
         assert len(self._word_set) > 0
 
-        glove_p = config.RemoteDirs.root / config.Data.glove_path_local or config.Data.glove_path
+        glove_p = config.RemoteDirs.root / (config.Data.glove_path_local or config.Data.glove_path)
         assert str(self.params.embed_size) in glove_p.name
         print('Loading word embeddings at:')
         print(glove_p)

@@ -1,4 +1,5 @@
 from pathlib import Path
+import socket
 
 
 class RemoteDirs:
@@ -27,7 +28,7 @@ class Data:
     bio_tags = True  # the "O" tag is still used to label "outside" words if set to False
 
     start_word = '<S>'
-    start_label = 'START_LABEL'  # TODO do not predict these
+    start_label = 'START_LABEL'  # how exactly would these be used?
 
     end_word = '</S>'
     end_label = 'END_LABEL'
@@ -41,7 +42,7 @@ class Data:
     dev_data_path = RemoteDirs.data / 'CONLL05/conll05.dev.txt'
     test_data_path = RemoteDirs.data / 'CONLL05/conll05.test.wsj.txt'
     glove_path = RemoteDirs.data / 'glove.6B.100d.txt'
-    glove_path_local = LocalDirs.data / 'glove.6B.100d.txt'  # set to None if not running locally
+    glove_path_local = LocalDirs.data / 'glove.6B.100d.txt' if socket.gethostname() == 'Philum' else None
 
     verbose = True
 
@@ -51,7 +52,7 @@ class Eval:
     summary_interval = 100
     verbose = False
     dev_batch_size = 1024  # too big will cause tensorflow internal error
-    srl_eval_path = 'srl-eval.pl'
+    srl_eval_path = RemoteDirs.root / 'perl' / 'srl-eval.pl'
 
 
 

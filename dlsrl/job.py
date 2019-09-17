@@ -1,12 +1,13 @@
 import os
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 import tensorflow as tf
-import shutil
 import time
 import sys
 from sklearn.metrics import f1_score
 import numpy as np
+import pandas as pd
 
 from dlsrl.data import Data
 from dlsrl.utils import get_batches, shuffle_stack_pad, count_zeros_from_end
@@ -39,7 +40,6 @@ class Params:
 
 
 def main(param2val):
-
     # params
     params = Params(param2val)
     print(params)
@@ -63,11 +63,13 @@ def main(param2val):
     cross_entropy = tf.keras.losses.SparseCategoricalCrossentropy()  # performs softmax internally
 
     # train loop
+    dev_f1s = []
     train_start = time.time()
     for epoch in range(params.max_epochs):
         print()
-        print('====================================================')
+        print('===========')
         print('Epoch: {}'.format(epoch))
+        print('===========')
 
         # TODO save checkpoint from which to load model
         ckpt_p = local_job_p / "epoch_{}.ckpt".format(epoch)
@@ -85,10 +87,9 @@ def main(param2val):
         all_pred_label_ids_no_pad = []
         all_lengths = []
 
-        # TODO test
         all_sentence_pred_labels_no_pad = []
         all_sentence_gold_labels_no_pad = []
-        all_verb_indices = []  # TODO this is unused
+        all_verb_indices = []
         all_sentences = []
 
         for step, (x1_b, x2_b, y_b) in enumerate(get_batches(dev_x1, dev_x2, dev_y, config.Eval.dev_batch_size)):
@@ -158,12 +159,16 @@ def main(param2val):
         print_f1(epoch, 'conll-05', f1_naive(all_gold_label_ids_no_pad, all_pred_label_ids_no_pad, all_lengths))
 
         # evaluate with official conll05 perl script with Python interface provided by Allen AI NLP toolkit
-        print('===+ Official Conll-05 Evaluation on Dev Split +===')
-        f1_official_conll05(all_sentence_pred_labels_no_pad,        # List[List[str]]
-                            all_sentence_gold_labels_no_pad,        # List[List[str]]
-                            all_verb_indices,                       # List[Optional[int]]
-                            all_sentences)                          # List[List[str]]
-        print('===+ Official Conll-05 Evaluation on Dev Split +===')
+        sys.stdout.flush()
+        print('=============================================')
+        print('= Official Conll-05 Evaluation on Dev Split =')
+        dev_f1 = f1_official_conll05(all_sentence_pred_labels_no_pad,  # List[List[str]]
+                                     all_sentence_gold_labels_no_pad,  # List[List[str]]
+                                     all_verb_indices,  # List[Optional[int]]
+                                     all_sentences)  # List[List[str]]
+        dev_f1s.append(dev_f1)
+        print('=============================================')
+        sys.stdout.flush()
 
         # ----------------------------------------------- end evaluation
 
@@ -179,14 +184,12 @@ def main(param2val):
             optimizer.apply_gradients(zip(grads, deep_lstm.trainable_weights))
 
             if step % config.Eval.loss_interval == 0:
-                print('step {:<6}: loss = {:2.2f} minutes elapsed = {:<3}'.format(
+                print('step {:<6}: loss={:2.2f} total minutes elapsed={:<3}'.format(
                     step, loss, (time.time() - train_start) // 60))
 
-    #  move events file to shared drive
-    events_p = list(local_job_p.glob('*events*'))[0]
-    dst = config.RemoteDirs.runs / params.param_name / params.job_name
-    if not dst.exists():
-        dst.mkdir(parents=True)
-    shutil.move(str(events_p), str(dst))
+    # to pandas
+    eval_epochs = np.arange(params.max_epochs)
+    df_dev_f1 = pd.DataFrame(dev_f1s, index=eval_epochs, columns=['dev_f1'])
+    df_dev_f1.name = 'dev_f1'
 
-
+    return df_dev_f1

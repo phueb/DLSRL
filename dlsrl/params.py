@@ -14,5 +14,5 @@ param2default = {
 
 
 param2requests = {
-    "cell_size": [256]
+    "cell_size": [256, 256, 256, 256]
 }
