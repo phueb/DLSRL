@@ -28,16 +28,16 @@ class Model(tf.keras.Model):
         # He et al., 2017 used recurrent dropout but this prevents using cudnn and takes 10 times longer
 
         self.lstm1 = layers.LSTM(params.cell_size, return_sequences=True)
-        self.lstm2 = layers.LSTM(params.cell_size, return_sequences=True,
+        self.lstm2 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=params.dropout_prob,
                                  go_backwards=True)
         self.lstm3 = layers.LSTM(params.cell_size, return_sequences=True)
-        self.lstm4 = layers.LSTM(params.cell_size, return_sequences=True,
+        self.lstm4 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=params.dropout_prob,
                                  go_backwards=True)
-        self.lstm5 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=1 - params.keep_prob)
-        self.lstm6 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=1 - params.keep_prob,
+        self.lstm5 = layers.LSTM(params.cell_size, return_sequences=True)
+        self.lstm6 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=params.dropout_prob,
                                  go_backwards=True)
-        self.lstm7 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=1 - params.keep_prob)
-        self.lstm8 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=1 - params.keep_prob,
+        self.lstm7 = layers.LSTM(params.cell_size, return_sequences=True)
+        self.lstm8 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=params.dropout_prob,
                                  go_backwards=True)
 
         self.dense_output = layers.Dense(num_labels,
