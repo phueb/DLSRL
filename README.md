@@ -25,3 +25,8 @@ in the Department of Psychology at [UIUC](https://psychology.illinois.edu/).
 * Decoding constraints are not implemented (BIO tag sequence constraints, SRL sequence constraints)
 * Control gates governing highway connections between LSTM layers are not implemented
 * Recurrent dropout is not used because it prevents using cudnn acceleration of the LSTM computations in tensorflow 2.0
+
+
+## Compatibility
+
+Tested on Ubuntu 16.04, Python 3.5 and tensorflow-gpu 2.0.0b1
