@@ -11,7 +11,7 @@ import pandas as pd
 
 from dlsrl.data import Data
 from dlsrl.utils import get_batches, shuffle_stack_pad, count_zeros_from_end
-from dlsrl.eval import print_f1, f1_naive, f1_official_conll05
+from dlsrl.eval import print_f1, f1_official_conll05
 from dlsrl.model import Model
 from dlsrl import config
 
@@ -51,7 +51,7 @@ def main(param2val):
         local_job_p.mkdir(parents=True)
 
     # data
-    data = Data(params)  # TODO make tf.data.Dataset?
+    data = Data(params)  # TODO make tf.data.Dataset? + use smarter batching function to reduce amount of padding
 
     # model
     deep_lstm = Model(params, data.embeddings, data.num_labels)
@@ -155,17 +155,15 @@ def main(param2val):
         print_f1(epoch, 'macro ', f1_score(all_gold_label_ids_no_pad, all_pred_label_ids_no_pad, average='macro'))
         print_f1(epoch, 'micro ', f1_score(all_gold_label_ids_no_pad, all_pred_label_ids_no_pad, average='micro'))
 
-        # evaluate with pseudo-conll05 Python function
-        print_f1(epoch, 'conll-05', f1_naive(all_gold_label_ids_no_pad, all_pred_label_ids_no_pad, all_lengths))
-
         # evaluate with official conll05 perl script with Python interface provided by Allen AI NLP toolkit
         sys.stdout.flush()
         print('=============================================')
-        print('= Official Conll-05 Evaluation on Dev Split =')
+        print('Official Conll-05 Evaluation on Dev Split')
         dev_f1 = f1_official_conll05(all_sentence_pred_labels_no_pad,  # List[List[str]]
                                      all_sentence_gold_labels_no_pad,  # List[List[str]]
                                      all_verb_indices,  # List[Optional[int]]
                                      all_sentences)  # List[List[str]]
+        print_f1(epoch, 'conll-05', dev_f1)
         dev_f1s.append(dev_f1)
         print('=============================================')
         sys.stdout.flush()
