@@ -2,13 +2,15 @@
 
 ## Background
 
-Thjis repository contains a partial implementation of the semantic role labeling model reported in He et al. (2017) using Python 3.5 and tensorflow 2.0. 
+This repository contains a partial implementation of the semantic role labeling model reported in He et al. (2017) using Python 3.5 and tensorflow 2.0. 
 
 The paper describing the original implementation can be found here: 
-[Deep Semantic Role Labeling: What works and what's next](https://homes.cs.washington.edu/~luheng/files/acl2017_hllz.pdf)
+
+[Deep Semantic Role Labeling: What works and what's next](https://www.aclweb.org/anthology/P17-1044)
 
 The code is for research purpose only. 
-The goal of this research project is to understand early language acquisition, specifically how do children comprehend utterances in terms of who is doing what to whom?
+The goal of this research project is to model early language acquisition. 
+Specifically how do children comprehend utterances in terms of who is doing what to whom?
 
 ## History
 
