@@ -24,7 +24,7 @@ class Data:
     """
 
     lowercase = True  # True gives strong performance boost
-    bio_tags = False  # the "O" tag is still used to label "outside" words if set to False
+    bio_tags = True  # the "O" tag is still used to label "outside" words if set to False
 
     start_word = '<S>'
     start_label = 'START_LABEL'  # TODO do not predict these
@@ -50,6 +50,7 @@ class Eval:
     summary_interval = 100
     verbose = False
     dev_batch_size = 1024  # too big will cause tensorflow internal error
+    srl_eval_path = 'srl-eval.pl'
 
 
 

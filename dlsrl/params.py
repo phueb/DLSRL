@@ -3,8 +3,8 @@
 param2default = {
     "batch_size": 128,
     "use_se_marker": False,  # sentence start and end symbols
-    "embed_size": "100",
-    "cell_size": 256,
+    "embed_size": "100",  # He et al., 2017
+    "cell_size": 256,  # He et al., 2017 (actually, 300)
     "max_grad_norm": 1.0,  # He et al., 2017
     "keep_prob": 0.9,  # He et al., 2017
     "max_epochs": 500,  # He et al., 2017

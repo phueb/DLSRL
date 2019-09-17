@@ -138,9 +138,9 @@ class Data:
         with glove_p.open('rb') as f:
             for line in f:
                 info = line.strip().split()
-                word = info[0]
+                w = info[0].decode()  # must decode, else only bytes are found
                 embedding = np.array([float(r) for r in info[1:]])
-                w2embed[word] = embedding
+                w2embed[w] = embedding
 
         embedding_size = next(iter(w2embed.items()))[1].shape[0]
         print('Glove embedding size={}'.format(embedding_size))
@@ -149,11 +149,16 @@ class Data:
 
         # get embeddings for words in vocabulary
         res = np.zeros((self.num_words, embedding_size), dtype=np.float32)
+        num_found = 0
         for w, row_id in self.w2id.items():
             try:
                 res[row_id] = w2embed[w]
+                num_found += 1
             except KeyError:
+                print('Did not find GloVe embedding for "{}"'.format(w))
                 res[row_id] = np.random.standard_normal(embedding_size)
+
+        print('Found {} GloVe embeddings'.format(num_found))  # TODO this number is too low - what's going on?
 
         return res
 
