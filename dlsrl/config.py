@@ -49,6 +49,7 @@ class Eval:
     loss_interval = 100
     summary_interval = 100
     verbose = False
+    dev_batch_size = 1024  # too big will cause tensorflow internal error
 
 
 

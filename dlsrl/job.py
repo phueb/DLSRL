@@ -56,10 +56,6 @@ def main(param2val):
     # model
     deep_lstm = Model(params, data.embeddings, data.num_labels)
 
-    # deep_lstm.compile(optimizer=tf.optimizers.Adadelta(learning_rate=params.learning_rate,
-    #                                    epsilon=params.epsilon),
-    #                   loss=tf.keras.losses.SparseCategoricalCrossentropy())
-
     optimizer = tf.optimizers.Adadelta(learning_rate=params.learning_rate,
                                        epsilon=params.epsilon)
 
@@ -68,6 +64,8 @@ def main(param2val):
     # train loop
     train_start = time.time()
     for epoch in range(params.max_epochs):
+        print()
+        print('====================================================')
         print('Epoch: {}'.format(epoch))
 
         # TODO save checkpoint from which to load model
@@ -77,30 +75,33 @@ def main(param2val):
         train_x1, train_x2, train_y = shuffle_stack_pad(data.train,
                                                         batch_size=params.batch_size)  # returns int32
         dev_x1, dev_x2, dev_y = shuffle_stack_pad(data.dev,
-                                                  batch_size=params.batch_size,
+                                                  batch_size=config.Eval.dev_batch_size,
                                                   shuffle=False)
+
+        # ----------------------------------------------- start evaluation
 
         # TODO use tensorflow f1 metric
 
-        softmax_probs = deep_lstm(dev_x1, dev_x2, training=False)
-        pred_label_ids = np.argmax(softmax_probs, axis=1)
-        gold_label_ids = dev_y.flatten()  # reshape from [batch-size, max_seq_len] to [num_words]
-
-        print()
-        print('====================================================')
-        print('Comparing gold vs pred label ids:')
-
         y_true = []
         y_pred = []
+        lengths = []
 
-        # remove padding (but not "O" labels for words that are "outside" arguments)
-        for g, p in zip(gold_label_ids, pred_label_ids):
-            if g != 0:
-                y_true.append(g)
-                y_pred.append(p)
-                if config.Eval.verbose:
-                    print('gold={:<3} pred={:<3}'.format(g, p))
-        print('Number of comparisons after excluding "O" labels={}'.format(len(y_true)))
+        for step, (x1_b, x2_b, y_b) in enumerate(get_batches(dev_x1, dev_x2, dev_y, config.Eval.dev_batch_size)):
+
+            softmax_probs = deep_lstm(x1_b, x2_b, training=False)
+            pred_label_ids = np.argmax(softmax_probs, axis=1)
+            gold_label_ids = y_b.flatten()  # reshape from [batch-size, max_seq_len] to [num_words]
+            lengths += [len(row) - count_zeros_from_end(row) for row in x1_b]
+
+            # remove padding (but not "O" labels for words that are "outside" arguments)
+            for g, p in zip(gold_label_ids, pred_label_ids):
+                if g != 0:
+                    y_true.append(g)
+                    y_pred.append(p)
+                    if config.Eval.verbose:
+                        print('gold={:<3} pred={:<3}'.format(g, p))
+
+        print('Number of comparisons after excluding PAD_LABEL={}'.format(len(y_true)))
 
         # f1_score expects 1D label ids (e.g. gold=[0, 2, 1, 0], pred=[0, 1, 1, 0])
         print_f1(epoch, 'weight', f1_score(y_true, y_pred, average='weighted'))
@@ -108,10 +109,9 @@ def main(param2val):
         print_f1(epoch, 'micro ', f1_score(y_true, y_pred, average='micro'))
 
         # evaluate f1 conll05 style: compare arguments rather than single labels for single words
-        lengths = [len(row) - count_zeros_from_end(row) for row in dev_x1]
         print_f1(epoch, 'conll-05', f1_conll05(y_true, y_pred, lengths))
-        print('====================================================')
-        print()
+
+        # ----------------------------------------------- end evaluation
 
         # train on batches
         for step, (x1_b, x2_b, y_b) in enumerate(get_batches(train_x1, train_x2, train_y, params.batch_size)):

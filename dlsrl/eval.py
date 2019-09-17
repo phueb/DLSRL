@@ -19,6 +19,7 @@ def f1_conll05(gold_label_ids, pred_label_ids, lengths):
     """
 
     # number of labels must add up to total sum of sentence lengths (checks if padding has been removed)
+
     assert sum(lengths) == len(gold_label_ids)
     assert sum(lengths) == len(pred_label_ids)
 
