@@ -33,12 +33,12 @@ class Model(tf.keras.Model):
         self.lstm3 = layers.LSTM(params.cell_size, return_sequences=True)
         self.lstm4 = layers.LSTM(params.cell_size, return_sequences=True,
                                  go_backwards=True)
-        # self.lstm5 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=1 - params.keep_prob)
-        # self.lstm6 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=1 - params.keep_prob,
-        #                          go_backwards=True)
-        # self.lstm7 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=1 - params.keep_prob)
-        # self.lstm8 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=1 - params.keep_prob,
-        #                          go_backwards=True)
+        self.lstm5 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=1 - params.keep_prob)
+        self.lstm6 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=1 - params.keep_prob,
+                                 go_backwards=True)
+        self.lstm7 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=1 - params.keep_prob)
+        self.lstm8 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=1 - params.keep_prob,
+                                 go_backwards=True)
 
         self.dense_output = layers.Dense(num_labels,
                                          activation='softmax')  # TODO test softmax
@@ -58,14 +58,14 @@ class Model(tf.keras.Model):
         encoded2 = self.lstm2(encoded1, mask=mask, training=training)
         encoded3 = self.lstm3(encoded1 + encoded2, mask=mask, training=training)
         encoded4 = self.lstm4(encoded2 + encoded3, mask=mask, training=training)
-        # encoded5 = self.lstm5(encoded3 + encoded4, mask=mask, training=training)
-        # encoded6 = self.lstm6(encoded4 + encoded5, mask=mask, training=training)
-        # encoded7 = self.lstm7(encoded5 + encoded6, mask=mask, training=training)
-        # encoded8 = self.lstm8(encoded6 + encoded7, mask=mask, training=training)
+        encoded5 = self.lstm5(encoded3 + encoded4, mask=mask, training=training)
+        encoded6 = self.lstm6(encoded4 + encoded5, mask=mask, training=training)
+        encoded7 = self.lstm7(encoded5 + encoded6, mask=mask, training=training)
+        encoded8 = self.lstm8(encoded6 + encoded7, mask=mask, training=training)
         # returns [batch_size, max_seq_len, cell_size]
 
         num_words = tf.size(word_ids)
-        encoded_2d = tf.reshape(encoded3 + encoded4, [num_words, self.params.cell_size])  # TODO 1 + 2
+        encoded_2d = tf.reshape(encoded7 + encoded8, [num_words, self.params.cell_size])
         # returns [num_words_in_batch, cell_size]
         logits = self.dense_output(encoded_2d)
         # returns [num_words_in_batch, num_labels]
