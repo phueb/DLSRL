@@ -41,6 +41,7 @@ class Data:
     dev_data_path = RemoteDirs.data / 'CONLL05/conll05.dev.txt'
     test_data_path = RemoteDirs.data / 'CONLL05/conll05.test.wsj.txt'
     glove_path = RemoteDirs.data / 'glove.6B.100d.txt'
+    glove_path_local = LocalDirs.data / 'glove.6B.100d.txt'  # set to None if not running locally
 
     verbose = True
 

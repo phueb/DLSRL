@@ -158,12 +158,12 @@ def main(param2val):
         print_f1(epoch, 'conll-05', f1_naive(all_gold_label_ids_no_pad, all_pred_label_ids_no_pad, all_lengths))
 
         # evaluate with official conll05 perl script with Python interface provided by Allen AI NLP toolkit
-        print('=========================== Official Conll-05 Evaluation ==============')
+        print('===+ Official Conll-05 Evaluation on Dev Split +===')
         f1_official_conll05(all_sentence_pred_labels_no_pad,        # List[List[str]]
                             all_sentence_gold_labels_no_pad,        # List[List[str]]
-                            all_verb_indices,           # List[Optional[int]]
-                            all_sentences)              # List[List[str]]
-        print('=========================== Official Conll-05 Evaluation ==============')
+                            all_verb_indices,                       # List[Optional[int]]
+                            all_sentences)                          # List[List[str]]
+        print('===+ Official Conll-05 Evaluation on Dev Split +===')
 
         # ----------------------------------------------- end evaluation
 
