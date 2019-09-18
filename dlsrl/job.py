@@ -39,6 +39,18 @@ class Params:
         return res
 
 
+def masked_sparse_categorical_crossentropy(y_true, y_pred, mask_value=0):
+    mask_value = tf.Variable(mask_value)
+    mask = tf.equal(y_true, mask_value)
+    mask = 1 - tf.cast(mask, tf.float32)
+
+    # multiply categorical_crossentropy with the mask  (no reduce_sum operation is performed)
+    _loss = tf.keras.losses.sparse_categorical_crossentropy(y_true, y_pred) * mask
+
+    # take average w.r.t. the number of unmasked entries
+    return tf.math.reduce_sum(_loss) / tf.math.reduce_sum(mask)
+
+
 def main(param2val):
     # params
     params = Params(param2val)
@@ -156,11 +168,10 @@ def main(param2val):
                 softmax_2d = deep_lstm(x1_b, x2_b, training=True)  # returns [num words in batch, num_labels]
                 y_true = y_b.reshape([-1])
                 y_pred = softmax_2d
-                sample_weight = np.array([1 if i != 0 else 0 for i in y_true])  # weight padding labels by zero
-                sample_weight = sample_weight / np.sum(sample_weight)  # sum to 1
-                loss = cross_entropy(y_true=y_true,
-                                     y_pred=y_pred,
-                                     sample_weight=sample_weight)  # use sample_weight to remove influence of padding
+                # loss = cross_entropy(y_true=y_true,
+                #                      y_pred=y_pred)
+
+                loss = masked_sparse_categorical_crossentropy(y_true=y_true, y_pred=y_pred)
 
             grads = tape.gradient(loss, deep_lstm.trainable_weights)
             optimizer.apply_gradients(zip(grads, deep_lstm.trainable_weights))
