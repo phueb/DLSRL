@@ -78,6 +78,10 @@ class SrlEvalScorer:
         perl_script_command = ["perl", self._srl_eval_path, gold_path, predicted_path]
         completed_process = subprocess.run(perl_script_command, stdout=subprocess.PIPE,
                                            universal_newlines=True, check=True)
+
+        if config.Eval.verbose:
+            print(completed_process.stdout)
+
         for line in completed_process.stdout.split("\n"):
             stripped = line.strip().split()
             if len(stripped) == 7:

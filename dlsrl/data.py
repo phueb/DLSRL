@@ -23,10 +23,6 @@ class Data:
         self.sorted_words = [config.Data.pad_word, config.Data.unk_word] + self.sorted_words  # pad must have id=0
         self.sorted_labels = [config.Data.pad_label] + self.sorted_labels
 
-        if params.use_se_marker:
-            self.sorted_words += [config.Data.start_word, config.Data.end_word]
-            self.sorted_labels += [config.Data.start_label, config.Data.end_label]
-
         self.w2id = OrderedDict()  # word -> ID
         for n, w in enumerate(self.sorted_words):
             if w in self.w2id:
@@ -111,12 +107,11 @@ class Data:
                 predicate = int(left_input[0])
 
                 # words + labels
-                if self.params.use_se_marker:
-                    words = [config.Data.start_word] + left_input[1:] + [config.Data.end_word]
-                    labels = [config.Data.start_label] + right_input + [config.Data.end_label]
-                else:
-                    words = left_input[1:]
-                    labels = right_input
+                words = left_input[1:]
+                labels = right_input
+
+                if len(words) > self.params.max_sentence_length:
+                    continue
 
                 self._word_set.update(words)
                 self._label_set.update(labels)
@@ -132,7 +127,6 @@ class Data:
         assert len(self._word_set) > 0
 
         glove_p = config.RemoteDirs.root / (config.Data.glove_path_local or config.Data.glove_path)
-        assert str(self.params.embed_size) in glove_p.name
         print('Loading word embeddings at:')
         print(glove_p)
 
@@ -151,7 +145,6 @@ class Data:
                 word_embedding = w2embed[w]
             except KeyError:
                 res[row_id] = np.random.standard_normal(embedding_size)
-                print('Did not find GloVe embedding for "{}"'.format(w))
             else:
                 res[row_id] = word_embedding
                 num_found += 1
@@ -170,7 +163,7 @@ class Data:
         :param proposition: a tuple with structure (words, predicate, labels)
         :return: one-hot list, [sentence length]
         """
-        offset = int(self.params.use_se_marker)
+        offset = int(0)  # use + 1 if using sentence-beginning marker
         num_w_in_proposition = len(proposition[0])
         res = [int(i == proposition[1] + offset) for i in range(num_w_in_proposition)]
         return res

@@ -27,16 +27,10 @@ class Data:
     lowercase = True  # True gives strong performance boost
     bio_tags = True  # the "O" tag is still used to label "outside" words if set to False
 
-    start_word = '<S>'
-    start_label = 'START_LABEL'  # how exactly would these be used?
-
-    end_word = '</S>'
-    end_label = 'END_LABEL'
-
     unk_word = '<UNKNOWN>'  # TODO use this for test data - but don't use an UNKNOWN_LABEL
 
     pad_word = '<PAD>'
-    pad_label = 'PAD_LABEL'  # do not use the letter "O" because evaluation requires only removing padding
+    pad_label = 'B-PAD'  # do not use the letter "O" because evaluation requires only removing padding
 
     train_data_path = RemoteDirs.data / 'CONLL05/conll05.train.txt'
     dev_data_path = RemoteDirs.data / 'CONLL05/conll05.dev.txt'
@@ -50,8 +44,8 @@ class Data:
 class Eval:
     loss_interval = 100
     summary_interval = 100
-    verbose = False
-    dev_batch_size = 1024  # too big will cause tensorflow internal error
+    verbose = True  # print output of perl evaluation script
+    dev_batch_size = 512  # too big will cause tensorflow internal error
     srl_eval_path = RemoteDirs.root / 'perl' / 'srl-eval.pl'
 
 

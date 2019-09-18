@@ -60,7 +60,7 @@ def main(param2val):
                                        epsilon=params.epsilon,
                                        clipnorm=params.max_grad_norm)
 
-    cross_entropy = tf.keras.losses.SparseCategoricalCrossentropy()  # performs softmax internally
+    cross_entropy = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
 
     # train loop
     dev_f1s = []
@@ -83,71 +83,50 @@ def main(param2val):
 
         # ----------------------------------------------- start evaluation
 
+        # per-label f1 evaluation
         all_gold_label_ids_no_pad = []
         all_pred_label_ids_no_pad = []
-        all_lengths = []
 
+        # conll05 evaluation data
         all_sentence_pred_labels_no_pad = []
         all_sentence_gold_labels_no_pad = []
         all_verb_indices = []
-        all_sentences = []
+        all_sentences_no_pad = []
 
         for step, (x1_b, x2_b, y_b) in enumerate(get_batches(dev_x1, dev_x2, dev_y, config.Eval.dev_batch_size)):
 
-            softmax_probs = deep_lstm(x1_b, x2_b, training=False)
+            # get predicted label_ids from model
+            softmax_2d = deep_lstm(x1_b, x2_b, training=False)  # [num words in batch, num_labels]
+            softmax_3d = np.reshape(softmax_2d, (*np.shape(x1_b), data.num_labels))  # 1st dim is batch_size
+            batch_pred_label_ids = np.argmax(softmax_3d, axis=2)  # [batch_size, seq_length]
+            batch_gold_label_ids = y_b  # [batch_size, seq_length]
+            assert np.shape(batch_pred_label_ids) == (config.Eval.dev_batch_size, np.shape(x1_b)[1])
 
-            batch_pred_label_ids_pad = np.argmax(softmax_probs, axis=1)  # [num_words]
-            batch_gold_label_ids_pad = y_b.flatten()  # reshape from [batch-size, max_seq_len] to [num_words]
-            batch_lengths = [len(row) - count_zeros_from_end(row) for row in x1_b]
-            batch_sent_boundaries = np.cumsum(batch_lengths)
-            batch_words_pad = [data.sorted_words[i] for i in x1_b.flatten()]
+            # collect data for evaluation
+            for x1_row, x2_row, gold_label_ids, pred_label_ids, in zip(x1_b,
+                                                                       x2_b,
+                                                                       batch_gold_label_ids,
+                                                                       batch_pred_label_ids):
 
-            all_lengths += batch_lengths
+                sentence_length = len(x1_row) - count_zeros_from_end(x1_row)
 
-            batch_gold_label_ids_no_pad = []
-            batch_pred_label_ids_no_pad = []
-            batch_words = []
+                assert count_zeros_from_end(x1_row) == count_zeros_from_end(gold_label_ids)
+                sentence_gold_labels = [data.sorted_labels[i] for i in gold_label_ids]
+                sentence_pred_labels = [data.sorted_labels[i] for i in pred_label_ids]
+                verb_index = np.argmax(x2_row)
+                sentence = [data.sorted_words[i] for i in x1_row]
 
-            # remove padding (but not "O" labels for words that are "outside" arguments)
-            for g, p, w in zip(batch_gold_label_ids_pad,
-                               batch_pred_label_ids_pad,
-                               batch_words_pad):
-                if g != 0:
-                    # batch
-                    batch_gold_label_ids_no_pad.append(g)
-                    batch_pred_label_ids_no_pad.append(p)
-                    batch_words.append(w)
-                    # all
-                    all_gold_label_ids_no_pad.append(g)
-                    all_pred_label_ids_no_pad.append(p)
-                    if config.Eval.verbose:
-                        print('gold={:<3} pred={:<3}'.format(g, p))
+                # collect data for conll-05 evaluation + remove padding
+                all_sentence_pred_labels_no_pad.append(sentence_pred_labels[:sentence_length])
+                all_sentence_gold_labels_no_pad.append(sentence_gold_labels[:sentence_length])
+                all_verb_indices.append(verb_index)
+                all_sentences_no_pad.append(sentence[:sentence_length])
 
-            # need to collect data for conll05 evaluation script
-            batch_gold_labels_no_pad = np.array([data.sorted_labels[i] for i in all_gold_label_ids_no_pad])
-            batch_pred_labels_no_pad = np.array([data.sorted_labels[i] for i in all_pred_label_ids_no_pad])
-            batch_sentence_gold_labels_no_pad = np.split(batch_gold_labels_no_pad, batch_sent_boundaries)[:-1]
-            batch_sentence_pred_labels_no_pad = np.split(batch_pred_labels_no_pad, batch_sent_boundaries)[:-1]
+                # collect data for per-label evaluation
+                all_gold_label_ids_no_pad += list(gold_label_ids[:sentence_length])
+                all_pred_label_ids_no_pad += list(pred_label_ids[:sentence_length])
 
-            batch_verb_indices = list(np.argmax(x2_b, axis=1))
-            assert len(batch_verb_indices) == config.Eval.dev_batch_size
-
-            batch_sentences = np.split(np.array(batch_words), batch_sent_boundaries)[:-1]
-            assert len(batch_sentences) == config.Eval.dev_batch_size
-
-            all_sentence_gold_labels_no_pad += batch_sentence_gold_labels_no_pad
-            all_sentence_pred_labels_no_pad += batch_sentence_pred_labels_no_pad
-            all_verb_indices += batch_verb_indices
-            all_sentences += batch_sentences
-
-            # check that verb indices are not bigger than sentence length
-            for vi, s in zip(batch_verb_indices, batch_sentences):
-                assert vi <= len(s)
-
-        num_dev_labels = len(all_gold_label_ids_no_pad)
-        num_dev_sentences = len(all_lengths)
-        print('Number of labels to evaluate after excluding PAD_LABEL={}'.format(num_dev_labels))
-        print('Number of sentences to evaluate after excluding PAD_LABEL={}'.format(num_dev_sentences))
+        print('Number of sentences to evaluate: {}'.format(len(all_sentences_no_pad)))
 
         # evaluate f1 score computed over single labels (not spans)
         # f1_score expects 1D label ids (e.g. gold=[0, 2, 1, 0], pred=[0, 1, 1, 0])
@@ -162,7 +141,7 @@ def main(param2val):
         dev_f1 = f1_official_conll05(all_sentence_pred_labels_no_pad,  # List[List[str]]
                                      all_sentence_gold_labels_no_pad,  # List[List[str]]
                                      all_verb_indices,  # List[Optional[int]]
-                                     all_sentences)  # List[List[str]]
+                                     all_sentences_no_pad)  # List[List[str]]
         print_f1(epoch, 'conll-05', dev_f1)
         dev_f1s.append(dev_f1)
         print('=============================================')
@@ -174,9 +153,14 @@ def main(param2val):
         for step, (x1_b, x2_b, y_b) in enumerate(get_batches(train_x1, train_x2, train_y, params.batch_size)):
 
             with tf.GradientTape() as tape:
-                softmax_probs = deep_lstm(x1_b, x2_b, training=True)  # returns [num_words, num_labels]
-                loss = cross_entropy(y_b.reshape([-1]), softmax_probs)
-                # no need to mask loss function because padding is masked, and "O" labels should be learned
+                softmax_2d = deep_lstm(x1_b, x2_b, training=True)  # returns [num words in batch, num_labels]
+                y_true = y_b.reshape([-1])
+                y_pred = softmax_2d
+                sample_weight = np.array([1 if i != 0 else 0 for i in y_true])  # weight padding labels by zero
+                sample_weight = sample_weight / np.sum(sample_weight)  # sum to 1
+                loss = cross_entropy(y_true=y_true,
+                                     y_pred=y_pred,
+                                     sample_weight=sample_weight)  # use sample_weight to remove influence of padding
 
             grads = tape.gradient(loss, deep_lstm.trainable_weights)
             optimizer.apply_gradients(zip(grads, deep_lstm.trainable_weights))
@@ -190,4 +174,4 @@ def main(param2val):
     df_dev_f1 = pd.DataFrame(dev_f1s, index=eval_epochs, columns=['dev_f1'])
     df_dev_f1.name = 'dev_f1'
 
-    return df_dev_f1
+    return [df_dev_f1]

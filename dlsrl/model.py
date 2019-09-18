@@ -23,21 +23,21 @@ class Model(tf.keras.Model):
         # embed predicate_ids
         self.embedding2 = layers.Embedding(2, embed_size)  # He et al., 2017 use 100 here too
 
-        # TODO residual connections + control gates + orthonormal init of all weight matrices in LSTM
+        # TODO control gates + orthonormal init of all weight matrices in LSTM
 
         # He et al., 2017 used recurrent dropout but this prevents using cudnn and takes 10 times longer
 
         self.lstm1 = layers.LSTM(params.cell_size, return_sequences=True)
-        self.lstm2 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=params.dropout_prob,
+        self.lstm2 = layers.LSTM(params.cell_size, return_sequences=True,
                                  go_backwards=True)
         self.lstm3 = layers.LSTM(params.cell_size, return_sequences=True)
-        self.lstm4 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=params.dropout_prob,
+        self.lstm4 = layers.LSTM(params.cell_size, return_sequences=True,
                                  go_backwards=True)
         self.lstm5 = layers.LSTM(params.cell_size, return_sequences=True)
-        self.lstm6 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=params.dropout_prob,
+        self.lstm6 = layers.LSTM(params.cell_size, return_sequences=True,
                                  go_backwards=True)
         self.lstm7 = layers.LSTM(params.cell_size, return_sequences=True)
-        self.lstm8 = layers.LSTM(params.cell_size, return_sequences=True, recurrent_dropout=params.dropout_prob,
+        self.lstm8 = layers.LSTM(params.cell_size, return_sequences=True,
                                  go_backwards=True)
 
         self.dense_output = layers.Dense(num_labels,
@@ -45,11 +45,9 @@ class Model(tf.keras.Model):
 
     def call(self, word_ids, predicate_ids, training):
         embedded1 = self.embedding1(word_ids)
-        # returns [batch_size, max_seq_len, embed_size]
         embedded2 = self.embedding2(predicate_ids)
         # returns [batch_size, max_seq_len, embed_size]
 
-        # to_concat = tf.expand_dims(tf.cast(predicate_ids, tf.float32), -1)
         encoded0 = tf.concat([embedded1, embedded2], axis=2)
         # returns [batch_size, max_seq_len, embed_size + embed_size]
 
@@ -64,13 +62,11 @@ class Model(tf.keras.Model):
         encoded8 = self.lstm8(encoded6 + encoded7, mask=mask, training=training)
         # returns [batch_size, max_seq_len, cell_size]
 
-        num_words = tf.size(word_ids)
-        encoded_2d = tf.reshape(encoded7 + encoded8, [num_words, self.params.cell_size])
-        # returns [num_words_in_batch, cell_size]
-        logits = self.dense_output(encoded_2d)
+        encoded_2d = tf.reshape(encoded7 + encoded8, [-1, self.params.cell_size])
+        softmax_2d = self.dense_output(encoded_2d)
         # returns [num_words_in_batch, num_labels]
 
-        return logits
+        return softmax_2d
 
     # ------------------------------------------------------- unrelated to training
 
