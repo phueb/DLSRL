@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow.keras import layers
 
-from dlsrl import config
+import numpy as np
 
 
 class Model(tf.keras.Model):
@@ -21,7 +21,13 @@ class Model(tf.keras.Model):
                                            mask_zero=True)  # TODO test mask_zero
 
         # embed predicate_ids
-        self.embedding2 = layers.Embedding(2, embed_size)  # He et al., 2017 use 100 here too
+        init = np.vstack((np.zeros(embed_size),  # TODO test
+                          np.ones(embed_size)))
+        print('Initializing binary feature embedding with:')
+        print(init)
+        self.embedding2 = layers.Embedding(2, embed_size,  # He et al., 2017 use 100 here too
+                                           embeddings_initializer=tf.keras.initializers.constant(init)
+                                           )
 
         # TODO control gates + orthonormal init of all weight matrices in LSTM
 
@@ -40,8 +46,7 @@ class Model(tf.keras.Model):
         self.lstm8 = layers.LSTM(params.cell_size, return_sequences=True,
                                  go_backwards=True)
 
-        self.dense_output = layers.Dense(num_labels,
-                                         activation='softmax')  # TODO test softmax
+        self.dense_output = layers.Dense(num_labels, activation='softmax')
 
     def call(self, word_ids, predicate_ids, training):
         embedded1 = self.embedding1(word_ids)

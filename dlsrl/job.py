@@ -140,6 +140,9 @@ def main(param2val):
 
         print('Number of sentences to evaluate: {}'.format(len(all_sentences_no_pad)))
 
+        for label in all_sentence_gold_labels_no_pad:
+            assert label != config.Data.pad_label
+
         # evaluate f1 score computed over single labels (not spans)
         # f1_score expects 1D label ids (e.g. gold=[0, 2, 1, 0], pred=[0, 1, 1, 0])
         print_f1(epoch, 'weight', f1_score(all_gold_label_ids_no_pad, all_pred_label_ids_no_pad, average='weighted'))
@@ -171,6 +174,7 @@ def main(param2val):
                 # loss = cross_entropy(y_true=y_true,
                 #                      y_pred=y_pred)
 
+                # this masked loss function is different than above and does not decrease as fast
                 loss = masked_sparse_categorical_crossentropy(y_true=y_true, y_pred=y_pred)
 
             grads = tape.gradient(loss, deep_lstm.trainable_weights)

@@ -16,7 +16,11 @@ def f1_official_conll05(batch_bio_predicted_tags,   # List[List[str]]
                              tags in batch_bio_gold_tags]
 
     # SrlEvalScorer is available from AllenAI NLP toolkit
-    span_metric = SrlEvalScorer(ignore_classes=["V", config.Data.pad_label])
+    # ignore_classes does not affect perl script, but affects f1 computed by Allen AI NLP toolkit
+    # sometimes the padding label does not show up in output of perl script -
+    # that is because it was not predicted by the model
+    span_metric = SrlEvalScorer(ignore_classes=["V",
+                                                config.Data.pad_label.lstrip('B-').lstrip('I-')])
     span_metric(batch_verb_indices,             # List[Optional[int]]
                 batch_sentences,                # List[List[str]]
                 batch_conll_predicted_tags,     # List[List[str]]
