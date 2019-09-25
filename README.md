@@ -29,4 +29,4 @@ in the Department of Psychology at [UIUC](https://psychology.illinois.edu/).
 
 ## Compatibility
 
-Tested on Ubuntu 16.04, Python 3.5 and tensorflow-gpu 2.0.0rc1
+Tested on Ubuntu 16.04, Python 3.6 and tensorflow-gpu 2.0.0rc1

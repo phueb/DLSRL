@@ -3,3 +3,5 @@ scikit-learn
 tensorflow-gpu==2.0.0rc1
 scipy
 pandas
+allennlp==0.9.0
+torch
