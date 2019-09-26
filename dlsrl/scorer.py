@@ -1,3 +1,5 @@
+from typing import Dict
+
 import os
 import shutil
 import subprocess
@@ -99,7 +101,7 @@ class SrlEvalScorer:
                 self._false_negatives[tag] += num_missed
         shutil.rmtree(tempdir)
 
-    def get_metric(self, reset: bool = False):
+    def get_metric(self, reset: bool = False) -> Dict:
         """
         Returns
         -------

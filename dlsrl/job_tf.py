@@ -1,20 +1,18 @@
 import os
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
+import tensorflow as tf
 import time
 import sys
 from sklearn.metrics import f1_score
 import numpy as np
 import pandas as pd
 
-from allennlp.common.params import Params as AllenParams
-from allennlp.modules import Seq2SeqEncoder, TextFieldEmbedder
-from allennlp.nn import InitializerApplicator
-
 from dlsrl.data import Data
 from dlsrl.utils import get_batches, shuffle_stack_pad, count_zeros_from_end
 from dlsrl.eval import print_f1, f1_official_conll05
-from dlsrl.model_original import ModelOriginal
+from dlsrl.model_tf import TensorflowSRLModel
 from dlsrl import config
 
 
@@ -41,6 +39,18 @@ class Params:
         return res
 
 
+def masked_sparse_categorical_crossentropy(y_true, y_pred, mask_value=0):
+    mask_value = tf.Variable(mask_value)
+    mask = tf.equal(y_true, mask_value)
+    mask = 1 - tf.cast(mask, tf.float32)
+
+    # multiply categorical_crossentropy with the mask  (no reduce_sum operation is performed)
+    _loss = tf.keras.losses.sparse_categorical_crossentropy(y_true, y_pred) * mask
+
+    # take average w.r.t. the number of unmasked entries
+    return tf.math.reduce_sum(_loss) / tf.math.reduce_sum(mask)
+
+
 def main(param2val):
     # params
     params = Params(param2val)
@@ -55,39 +65,14 @@ def main(param2val):
     # data
     data = Data(params)  # TODO make tf.data.Dataset? + use smarter batching function to reduce amount of padding
 
-    # parameters for original model are specified here:
-    # https://github.com/allenai/allennlp/blob/master/training_config/semantic_role_labeler.jsonnet
-
-    # encoder
-    encoder_params = AllenParams(
-        {'type': 'alternating_lstm',
-         'input_size': 200,  # this is glove size + binary feature embedding size = 200
-         'hidden_size': params.hidden_size,
-         'num_layers': params.num_layers,
-         'use_highway': True,
-         'recurrent_dropout_probability': 0.1})
-    encoder = Seq2SeqEncoder.from_params(encoder_params)
-
-    # embedder
-    embedder_params = {  # TODO test
-        "type": "embedding",
-        "embedding_dim": 100,
-        "pretrained_file": "https://allennlp.s3.amazonaws.com/datasets/glove/glove.6B.100d.txt.gz",
-        "trainable": True
-    }
-    text_field_embedder = TextFieldEmbedder.from_params(embedder_params)
-
-    # initializer
-    initializer_params = {
-        'type': 'orthogonal'}
-    initializer = InitializerApplicator.from_params(initializer_params)
-
     # model
-    original_model = ModelOriginal(vocab=vocab,
-                                   text_field_embedder=text_field_embedder,
-                                   encoder=encoder,
-                                   initializer=initializer,
-                                   binary_feature_dim=100)
+    model_tf = TensorflowSRLModel(params, data.embeddings, data.num_labels)
+
+    optimizer = tf.optimizers.Adadelta(learning_rate=params.learning_rate,
+                                       epsilon=params.epsilon,
+                                       clipnorm=params.max_grad_norm)
+
+    cross_entropy = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
 
     # train loop
     dev_f1s = []
@@ -98,6 +83,8 @@ def main(param2val):
         print('Epoch: {}'.format(epoch))
         print('===========')
 
+        # TODO save checkpoint from which to load model
+        ckpt_p = local_job_p / "epoch_{}.ckpt".format(epoch)
 
         # prepare data for epoch
         train_x1, train_x2, train_y = shuffle_stack_pad(data.train,
@@ -121,7 +108,7 @@ def main(param2val):
         for step, (x1_b, x2_b, y_b) in enumerate(get_batches(dev_x1, dev_x2, dev_y, config.Eval.dev_batch_size)):
 
             # get predicted label_ids from model
-            softmax_2d = # TODO
+            softmax_2d = model_tf(x1_b, x2_b, training=False)  # [num words in batch, num_labels]
             softmax_3d = np.reshape(softmax_2d, (*np.shape(x1_b), data.num_labels))  # 1st dim is batch_size
             batch_pred_label_ids = np.argmax(softmax_3d, axis=2)  # [batch_size, seq_length]
             batch_gold_label_ids = y_b  # [batch_size, seq_length]
@@ -180,7 +167,18 @@ def main(param2val):
         # train on batches
         for step, (x1_b, x2_b, y_b) in enumerate(get_batches(train_x1, train_x2, train_y, params.batch_size)):
 
-            # TODO train model
+            with tf.GradientTape() as tape:
+                softmax_2d = model_tf(x1_b, x2_b, training=True)  # returns [num words in batch, num_labels]
+                y_true = y_b.reshape([-1])
+                y_pred = softmax_2d
+                # loss = cross_entropy(y_true=y_true,
+                #                      y_pred=y_pred)
+
+                # this masked loss function is different than above and does not decrease as fast
+                loss = masked_sparse_categorical_crossentropy(y_true=y_true, y_pred=y_pred)
+
+            grads = tape.gradient(loss, model_tf.trainable_weights)
+            optimizer.apply_gradients(zip(grads, model_tf.trainable_weights))
 
             if step % config.Eval.loss_interval == 0:
                 print('step {:<6}: loss={:2.2f} total minutes elapsed={:<3}'.format(
