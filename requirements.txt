@@ -1,3 +1,4 @@
+pip>=19.2.3
 torch
 numpy
 tensorflow-gpu==2.0.0rc1
