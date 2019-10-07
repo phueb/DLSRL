@@ -29,12 +29,3 @@ def f1_official_conll05(batch_bio_predicted_tags,   # List[List[str]]
     all_metrics = span_metric.get_metric()  # f1 is computed by Allen AI NLP toolkit given tp, fp, fn by perl script
 
     return all_metrics["f1-measure-overall"]
-
-
-def print_f1(epoch, method, f1):
-    print('epoch {:>3} method={} | f1={:.2f}'.format(epoch, method, f1))
-
-
-
-
-

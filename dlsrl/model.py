@@ -111,7 +111,7 @@ class AllenSRLModel(Model):
             A torch tensor representing the sequence of integer gold class labels
             of shape ``(batch_size, num_tokens)``
         metadata : ``List[Dict[str, Any]]``, optional, (default = None)
-            metadata containg the original words in the sentence and the verb to compute the
+            metadata containing the original words in the sentence and the verb to compute the
             frame for, under 'words' and 'verb' keys, respectively.
 
         Returns

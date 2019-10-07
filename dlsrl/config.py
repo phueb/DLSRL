@@ -1,9 +1,19 @@
 from pathlib import Path
 import socket
+import sys
+
+if 'win' in sys.platform:
+    raise SystemExit('Not supported on Windows')
+elif 'linux' == sys.platform:
+    mnt_point = '/media'
+else:
+    # assume MacOS
+    mnt_point = '/Volumes'
 
 
 class RemoteDirs:
-    root = Path('/media/research_data') / 'DLSRL'
+    research_data = Path(mnt_point) / 'research_data'
+    root = research_data / 'DLSRL'
     runs = root / 'runs'
     data = root / 'data'
 
@@ -47,6 +57,8 @@ class Eval:
     verbose = True  # print output of perl evaluation script
     dev_batch_size = 512  # too big will cause tensorflow internal error
     srl_eval_path = RemoteDirs.root / 'perl' / 'srl-eval.pl'
+
+    ignore_span_metric = True  # TODO test
 
 
 

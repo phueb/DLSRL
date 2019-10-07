@@ -105,6 +105,8 @@ def main(param2val):
         all_verb_indices = []
         all_sentences_no_pad = []
 
+        # TODO use batching machinery from job.py here because i know it is correct
+
         for step, (x1_b, x2_b, y_b) in enumerate(get_batches(dev_x1, dev_x2, dev_y, config.Eval.dev_batch_size)):
 
             # get predicted label_ids from model
@@ -123,10 +125,10 @@ def main(param2val):
                 sentence_length = len(x1_row) - count_zeros_from_end(x1_row)
 
                 assert count_zeros_from_end(x1_row) == count_zeros_from_end(gold_label_ids)
-                sentence_gold_labels = [data.sorted_labels[i] for i in gold_label_ids]
-                sentence_pred_labels = [data.sorted_labels[i] for i in pred_label_ids]
+                sentence_gold_labels = [data._sorted_labels[i] for i in gold_label_ids]
+                sentence_pred_labels = [data._sorted_labels[i] for i in pred_label_ids]
                 verb_index = np.argmax(x2_row)
-                sentence = [data.sorted_words[i] for i in x1_row]
+                sentence = [data._sorted_words[i] for i in x1_row]
 
                 # collect data for conll-05 evaluation + remove padding
                 all_sentence_pred_labels_no_pad.append(sentence_pred_labels[:sentence_length])

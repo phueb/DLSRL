@@ -1,6 +1,5 @@
 import time
 import sys
-from sklearn.metrics import f1_score
 import numpy as np
 import pandas as pd
 import torch
@@ -15,7 +14,7 @@ from allennlp.data.iterators import BucketIterator
 
 from dlsrl.data import Data
 from dlsrl.utils import get_batches, shuffle_stack_pad, count_zeros_from_end
-from dlsrl.eval import print_f1, f1_official_conll05
+from dlsrl.eval import f1_official_conll05
 from dlsrl.model import AllenSRLModel
 from dlsrl import config
 
@@ -89,7 +88,7 @@ def main(param2val):
     # initializer
     initializer_params = [
         ("tag_projection_layer.*weight",
-         AllenParams({ "type": "orthogonal"}))
+         AllenParams({"type": "orthogonal"}))
     ]
     initializer = InitializerApplicator.from_params(initializer_params)
 
@@ -98,7 +97,8 @@ def main(param2val):
                           text_field_embedder=text_field_embedder,
                           encoder=encoder,
                           initializer=initializer,
-                          binary_feature_dim=100)
+                          binary_feature_dim=100,
+                          ignore_span_metric=config.Eval.ignore_span_metric)  # TODO test
     model.cuda()
 
     from allennlp.common.checks import check_for_gpu
@@ -122,11 +122,6 @@ def main(param2val):
 
         # ----------------------------------------------- start evaluation
 
-
-        # per-label f1 evaluation
-        all_gold_label_ids_no_pad = []
-        all_pred_label_ids_no_pad = []
-
         # conll05 evaluation data
         all_sentence_pred_labels_no_pad = []
         all_sentence_gold_labels_no_pad = []
@@ -137,70 +132,77 @@ def main(param2val):
         dev_generator = bucket_batcher(data.dev_instances, num_epochs=1)
         for step, batch in enumerate(dev_generator):
 
-            # to cuda
+            if len(batch['tags']) != params.batch_size:
+                print('WARNING: Batch size is {}. Skipping'.format(len(batch['tags'])))
+                continue
+
+            # to CUDA
             batch['tokens']['tokens'] = batch['tokens']['tokens'].cuda()
             batch['verb_indicator'] = batch['verb_indicator'].cuda()
             batch['tags'] = batch['tags'].cuda()
 
-            # get predictions
+            # get predictions (softmax_3d has shape [mb_size, max_sent_length, num_labels])
             output_dict = model(**batch)  # input is dict[str, torch tensor]
             softmax_3d = output_dict['class_probabilities'].detach().cpu().numpy()  # 1st dim is batch_size
 
-            # TODO test softmax_3d
-            print(softmax_3d.shape)
-            print(softmax_3d.sum(axis=2))
+            # TODO implement custom f1 evaluation
 
-        #     batch_pred_label_ids = np.argmax(softmax_3d, axis=2)  # [batch_size, seq_length]
-        #     batch_gold_label_ids = y_b  # [batch_size, seq_length]
-        #     assert np.shape(batch_pred_label_ids) == (params.batch_size, np.shape(x1_b)[1])
-        #
-        #     # collect data for evaluation
-        #     for x1_row, x2_row, gold_label_ids, pred_label_ids, in zip(x1_b,
-        #                                                                x2_b,
-        #                                                                batch_gold_label_ids,
-        #                                                                batch_pred_label_ids):
-        #
-        #         sentence_length = len(x1_row) - count_zeros_from_end(x1_row)
-        #
-        #         assert count_zeros_from_end(x1_row) == count_zeros_from_end(gold_label_ids)
-        #         sentence_gold_labels = [data.sorted_labels[i] for i in gold_label_ids]
-        #         sentence_pred_labels = [data.sorted_labels[i] for i in pred_label_ids]
-        #         verb_index = np.argmax(x2_row)
-        #         sentence = [data.sorted_words[i] for i in x1_row]
-        #
-        #         # collect data for conll-05 evaluation + remove padding
-        #         all_sentence_pred_labels_no_pad.append(sentence_pred_labels[:sentence_length])
-        #         all_sentence_gold_labels_no_pad.append(sentence_gold_labels[:sentence_length])
-        #         all_verb_indices.append(verb_index)
-        #         all_sentences_no_pad.append(sentence[:sentence_length])
-        #
-        #         # collect data for per-label evaluation
-        #         all_gold_label_ids_no_pad += list(gold_label_ids[:sentence_length])
-        #         all_pred_label_ids_no_pad += list(pred_label_ids[:sentence_length])
-        #
-        # print('Number of sentences to evaluate: {}'.format(len(all_sentences_no_pad)))
-        #
-        # for label in all_sentence_gold_labels_no_pad:
-        #     assert label != config.Data.pad_label
-        #
-        # # evaluate f1 score computed over single labels (not spans)
-        # # f1_score expects 1D label ids (e.g. gold=[0, 2, 1, 0], pred=[0, 1, 1, 0])
-        # print_f1(epoch, 'weight', f1_score(all_gold_label_ids_no_pad, all_pred_label_ids_no_pad, average='weighted'))
-        # print_f1(epoch, 'macro ', f1_score(all_gold_label_ids_no_pad, all_pred_label_ids_no_pad, average='macro'))
-        # print_f1(epoch, 'micro ', f1_score(all_gold_label_ids_no_pad, all_pred_label_ids_no_pad, average='micro'))
-        #
-        # # evaluate with official conll05 perl script with Python interface provided by Allen AI NLP toolkit
-        # sys.stdout.flush()
-        # print('=============================================')
-        # print('Official Conll-05 Evaluation on Dev Split')
-        # dev_f1 = f1_official_conll05(all_sentence_pred_labels_no_pad,  # List[List[str]]
-        #                              all_sentence_gold_labels_no_pad,  # List[List[str]]
-        #                              all_verb_indices,  # List[Optional[int]]
-        #                              all_sentences_no_pad)  # List[List[str]]
-        # print_f1(epoch, 'conll-05', dev_f1)
-        # dev_f1s.append(dev_f1)
-        # print('=============================================')
-        # sys.stdout.flush()
+            y_b = batch['tags'].cpu().numpy()
+            x1_b = batch['tokens']['tokens'].cpu().numpy()
+            x2_b = batch['verb_indicator'].cpu().numpy()
+
+            # get words and verb_indices
+            sentences_b = []
+            verb_indices_b = []
+            for row in batch['metadata']:  # this is correct
+                sentence = row['words']
+                verb_index = row['verb_index']
+                sentences_b.append(sentence)
+                verb_indices_b.append(verb_index)
+
+            # get gold and predicted label IDs
+            batch_pred_label_ids = np.argmax(softmax_3d, axis=2)  # [batch_size, seq_length]
+            batch_gold_label_ids = y_b  # [batch_size, seq_length]
+            assert np.shape(batch_pred_label_ids) == (params.batch_size, np.shape(x1_b)[1])
+            assert np.shape(batch_gold_label_ids) == (params.batch_size, np.shape(x1_b)[1])
+
+            # collect data for evaluation
+            for x1_row, x2_row, gold_label_ids, pred_label_ids, s, vi in zip(x1_b,
+                                                                             x2_b,
+                                                                             batch_gold_label_ids,
+                                                                             batch_pred_label_ids,
+                                                                             sentences_b,
+                                                                             verb_indices_b):
+
+                # convert IDs to tokens
+                sentence_pred_labels = [vocab.get_token_from_index(i, namespace="labels")
+                                        for i in pred_label_ids]
+                sentence_gold_labels = [vocab.get_token_from_index(i, namespace="labels")
+                                        for i in gold_label_ids]
+
+                # collect data for conll-05 evaluation + remove padding
+                sentence_length = len(s)
+                all_sentence_pred_labels_no_pad.append(sentence_pred_labels[:sentence_length])
+                all_sentence_gold_labels_no_pad.append(sentence_gold_labels[:sentence_length])
+                all_verb_indices.append(vi)
+                all_sentences_no_pad.append(s)
+
+        for label in all_sentence_gold_labels_no_pad:
+            assert label != config.Data.pad_label
+
+        # evaluate with official conll05 perl script with Python interface provided by Allen AI NLP toolkit
+        sys.stdout.flush()
+        print('=============================================')
+        print('Official Conll-05 Evaluation on Dev Split')
+        dev_f1 = f1_official_conll05(all_sentence_pred_labels_no_pad,  # List[List[str]]
+                                     all_sentence_gold_labels_no_pad,  # List[List[str]]
+                                     all_verb_indices,  # List[Optional[int]]
+                                     all_sentences_no_pad)  # List[List[str]]
+        print('=============================================')
+        sys.stdout.flush()
+
+        # collect
+        dev_f1s.append(dev_f1)
 
         # ----------------------------------------------- end evaluation
 
@@ -232,7 +234,7 @@ def main(param2val):
 
     # to pandas
     eval_epochs = np.arange(params.max_epochs)
-    df_dev_f1 = pd.DataFrame(dev_f1s, index=eval_epochs, columns=['dev_f1'])
+    df_dev_f1 = pd.Series(dev_f1s, index=eval_epochs, columns=['dev_f1'])
     df_dev_f1.name = 'dev_f1'
 
     return [df_dev_f1]

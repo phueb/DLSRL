@@ -17,6 +17,15 @@ class Data:
     def __init__(self, params):
         self.params = params
 
+        # ----------------------------------------------------------- if ludwig-local --debug
+
+        if config.Global.debug:
+            print('WARNING: Loading data locally because debugging=True')
+            config.Data.train_data_path = config.LocalDirs.data / 'CONLL05/conll05.train.txt'
+            config.Data.dev_data_path = config.LocalDirs.data / 'CONLL05/conll05.dev.txt'
+            config.Data.test_data_path = config.LocalDirs.data / 'CONLL05/conll05.test.wsj.txt'
+            config.Data.glove_path = config.LocalDirs.data / 'glove.6B.100d.txt'
+
         # ----------------------------------------------------------- words & labels
 
         self._word_set = set()  # holds words from both train and dev
@@ -25,20 +34,20 @@ class Data:
         self.train_propositions = self.get_propositions_from_file(config.Data.train_data_path)
         self.dev_propositions = self.get_propositions_from_file(config.Data.dev_data_path)
 
-        self.sorted_words = sorted(self._word_set)
-        self.sorted_labels = sorted(self._label_set)
+        self._sorted_words = sorted(self._word_set)
+        self._sorted_labels = sorted(self._label_set)
 
-        self.sorted_words = [config.Data.pad_word, config.Data.unk_word] + self.sorted_words  # pad must have id=0
-        self.sorted_labels = [config.Data.pad_label] + self.sorted_labels
+        self._sorted_words = [config.Data.pad_word, config.Data.unk_word] + self._sorted_words  # pad must have id=0
+        self._sorted_labels = [config.Data.pad_label] + self._sorted_labels
 
         self.w2id = OrderedDict()  # word -> ID
-        for n, w in enumerate(self.sorted_words):
+        for n, w in enumerate(self._sorted_words):
             if w in self.w2id:
                 raise SystemError('Trying to add word to w2id, but word is already in w2id')
             self.w2id[w] = n
 
         self.l2id = OrderedDict()  # label -> ID
-        for n, l in enumerate(self.sorted_labels):
+        for n, l in enumerate(self._sorted_labels):
             if l in self.l2id:
                 print('"{}" is already in l2id. Skipping'.format(l))
                 continue  # the letter "O" should be assigned id=0 instead of last id
@@ -80,12 +89,20 @@ class Data:
         self.dev_instances = self.make_instances(self.dev_propositions)
 
     @property
+    def sorted_words(self):
+        raise RuntimeError('Use allennlp.vocab to convert between words and IDs')
+
+    @property
+    def sorted_labels(self):
+        raise RuntimeError('Use allennlp.vocab to convert between words and IDs')
+
+    @property
     def num_labels(self):
-        return len(self.sorted_labels)
+        return len(self._sorted_labels)
 
     @property
     def num_words(self):
-        return len(self.sorted_words)
+        return len(self._sorted_words)
 
     @property
     def num_train_propositions(self):
@@ -140,14 +157,19 @@ class Data:
 
         assert len(self._word_set) > 0
 
-        glove_p = config.RemoteDirs.root / (config.Data.glove_path_local or config.Data.glove_path)
-        print('Loading word embeddings at:')
-        print(glove_p)
+        if self.params.glove:
+            glove_p = config.RemoteDirs.root / (config.Data.glove_path_local or config.Data.glove_path)
+            print('Loading word embeddings at:')
+            print(glove_p)
 
-        df = pd.read_csv(glove_p, sep=" ", quoting=3, header=None, index_col=0)
-        w2embed = {key: val.values for key, val in df.T.items()}
+            df = pd.read_csv(glove_p, sep=" ", quoting=3, header=None, index_col=0)
+            w2embed = {key: val.values for key, val in df.T.items()}
+            embedding_size = next(iter(w2embed.items()))[1].shape[0]
+        else:
+            print('WARNING: Not loading GloVe embeddings')
+            w2embed = {}
+            embedding_size = 28
 
-        embedding_size = next(iter(w2embed.items()))[1].shape[0]
         print('Glove embedding size={}'.format(embedding_size))
         print('Num embeddings in GloVe file: {}'.format(len(w2embed)))
 
