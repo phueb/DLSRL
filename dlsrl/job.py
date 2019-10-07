@@ -1,3 +1,8 @@
+import os
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+import tensorflow as tf
 import time
 import sys
 import numpy as np
@@ -14,7 +19,7 @@ from allennlp.data.iterators import BucketIterator
 
 from dlsrl.data import Data
 from dlsrl.eval import f1_official_conll05
-from dlsrl.model import AllenSRLModel
+from dlsrl.model import TensorflowSRLModel
 from dlsrl import config
 
 
@@ -39,6 +44,18 @@ class Params:
         for k, v in sorted(self.param2val.items()):
             res += '{}={}\n'.format(k, v)
         return res
+
+
+def masked_sparse_categorical_crossentropy(y_true, y_pred, mask_value=0):
+    mask_value = tf.Variable(mask_value)
+    mask = tf.equal(y_true, mask_value)
+    mask = 1 - tf.cast(mask, tf.float32)
+
+    # multiply categorical_crossentropy with the mask  (no reduce_sum operation is performed)
+    _loss = tf.keras.losses.sparse_categorical_crossentropy(y_true, y_pred) * mask
+
+    # take average w.r.t. the number of unmasked entries
+    return tf.math.reduce_sum(_loss) / tf.math.reduce_sum(mask)
 
 
 def main(param2val):
@@ -68,9 +85,11 @@ def main(param2val):
 
     # model
     print('Building model...')
-    model = make_model(data, params, vocab)
+    model = TensorflowSRLModel(data, params, vocab)
 
-    optimizer = torch.optim.Adadelta(params=model.parameters(), lr=params.learning_rate, eps=params.epsilon)
+    optimizer = tf.optimizers.Adadelta(learning_rate=params.learning_rate,
+                                       epsilon=params.epsilon,
+                                       clipnorm=params.max_grad_norm)
 
     # train loop
     dev_f1s = []
@@ -89,7 +108,6 @@ def main(param2val):
         all_verb_indices = []
         all_sentences_no_pad = []
 
-        model.eval()
         dev_generator = bucket_batcher(data.dev_instances, num_epochs=1)
         for step, batch in enumerate(dev_generator):
 
@@ -101,14 +119,15 @@ def main(param2val):
             x1_b = batch['tokens']['tokens'].cpu().numpy()
             x2_b = batch['verb_indicator'].cpu().numpy()
 
-            # to CUDA
-            batch['tokens']['tokens'] = batch['tokens']['tokens'].cuda()
-            batch['verb_indicator'] = batch['verb_indicator'].cuda()
-            batch['tags'] = batch['tags'].cuda()
+            # to numpy
+            batch['tokens']['tokens'] = x1_b
+            batch['verb_indicator'] = x2_b
+            batch['tags'] = y_b
 
-            # get predictions (softmax_3d has shape [mb_size, max_sent_length, num_labels])
-            output_dict = model(**batch)  # input is dict[str, torch tensor]
-            softmax_3d = output_dict['class_probabilities'].detach().cpu().numpy()  # 1st dim is batch_size
+            # get predictions (softmax_3d has shape [mb_size, max_sent_length, num_classes])
+            output_dict = model(x1_b, x2_b, training=False)
+            softmax_3d = np.reshape(output_dict['softmax_2d'],
+                                    (*np.shape(x1_b), model.num_classes))  # 1st dim is batch_
 
             # get words and verb_indices
             sentences_b = []
@@ -166,26 +185,27 @@ def main(param2val):
         # ----------------------------------------------- end evaluation
 
         # train on batches
-        model.train()
         train_generator = bucket_batcher(data.train_instances, num_epochs=1)
         for step, batch in enumerate(train_generator):
 
-            # to cuda
-            batch['tokens']['tokens'] = batch['tokens']['tokens'].cuda()
-            batch['verb_indicator'] = batch['verb_indicator'].cuda()
-            batch['tags'] = batch['tags'].cuda()
+            y_b = batch['tags'].cpu().numpy()
+            x1_b = batch['tokens']['tokens'].cpu().numpy()
+            x2_b = batch['verb_indicator'].cpu().numpy()
+
+            # to numpy
+            batch['tokens']['tokens'] = x1_b
+            batch['verb_indicator'] = x2_b
+            batch['tags'] = y_b
 
             # forward + loss
-            optimizer.zero_grad()
-            output_dict = model(**batch)  # input is dict[str, torch tensor]
-            loss = output_dict["loss"] + model.get_regularization_penalty()
-            if torch.isnan(loss):
-                raise ValueError("nan loss encountered")
+            with tf.GradientTape() as tape:
+                output_dict = model(x1_b, x2_b, training=True)
+                y_true = y_b.reshape([-1])
+                y_pred = output_dict['softmax_2d']
+                loss = masked_sparse_categorical_crossentropy(y_true=y_true, y_pred=y_pred)
 
-            # backward + update
-            loss.backward()
-            training_util.rescale_gradients(model, params.max_grad_norm)
-            optimizer.step()
+            grads = tape.gradient(loss, model.trainable_weights)
+            optimizer.apply_gradients(zip(grads, model.trainable_weights))
 
             if step % config.Eval.loss_interval == 0:
                 print('step {:<6}: loss={:2.2f} total minutes elapsed={:<3}'.format(
@@ -197,52 +217,3 @@ def main(param2val):
     df_dev_f1.name = 'dev_f1'
 
     return [df_dev_f1]
-
-
-def make_model(data, params, vocab):
-    # parameters for original model are specified here:
-    # https://github.com/allenai/allennlp/blob/master/training_config/semantic_role_labeler.jsonnet
-
-    # encoder
-    encoder_params = AllenParams(
-        {'type': 'alternating_lstm',
-         'input_size': 200,  # this is glove size + binary feature embedding size = 200
-         'hidden_size': params.hidden_size,
-         'num_layers': params.num_layers,
-         'use_highway': True,
-         'recurrent_dropout_probability': 0.1})
-    encoder = Seq2SeqEncoder.from_params(encoder_params)
-
-    # embedder
-    embedder_params = AllenParams({
-        "token_embedders": {
-            "tokens": {
-                "type": "embedding",
-                "embedding_dim": 100,  # must match glove dimension
-                "pretrained_file": str(data.glove_path),
-                "trainable": True
-            }
-        }
-    })
-    text_field_embedder = TextFieldEmbedder.from_params(embedder_params, vocab=vocab)
-
-    # initializer
-    initializer_params = [
-        ("tag_projection_layer.*weight",
-         AllenParams({"type": "orthogonal"}))
-    ]
-    initializer = InitializerApplicator.from_params(initializer_params)
-
-    # model
-    model = AllenSRLModel(vocab=vocab,
-                          text_field_embedder=text_field_embedder,
-                          encoder=encoder,
-                          initializer=initializer,
-                          binary_feature_dim=100,
-                          ignore_span_metric=config.Eval.ignore_span_metric)  # TODO test
-    model.cuda()
-
-    from allennlp.common.checks import check_for_gpu
-    check_for_gpu(device_id=0)
-
-    return model

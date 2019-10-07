@@ -54,7 +54,7 @@ class Data:
         print('/////////////////////////////')
         print('Found {:,} training propositions ...'.format(self.num_train_propositions))
         print('Found {:,} dev propositions ...'.format(self.num_dev_propositions))
-        print("Extracted {:,} train+dev words and {:,} labels".format(self.num_words, self.num_labels))
+        print("Extracted {:,} train+dev words".format(self.num_words))
 
         for name, propositions in zip(['train', 'dev'],
                                       [self.train_propositions, self.dev_propositions]):
@@ -94,7 +94,7 @@ class Data:
 
     @property
     def num_labels(self):
-        return len(self._sorted_labels)
+        raise RuntimeError('Use allennlp.vocab')
 
     @property
     def num_words(self):
