@@ -21,18 +21,15 @@ class Data:
 
         if config.Global.debug:
             print('WARNING: Loading data locally because debugging=True')
-            config.Data.train_data_path = config.LocalDirs.data / 'CONLL05/conll05.train.txt'
-            config.Data.dev_data_path = config.LocalDirs.data / 'CONLL05/conll05.dev.txt'
-            config.Data.test_data_path = config.LocalDirs.data / 'CONLL05/conll05.test.wsj.txt'
-            config.Data.glove_path = config.LocalDirs.data / 'glove.6B.100d.txt'
+            config.RemoteDirs = config.LocalDirs
 
         # ----------------------------------------------------------- words & labels
 
         self._word_set = set()  # holds words from both train and dev
         self._label_set = set()  # holds labels from both train and dev
 
-        self.train_propositions = self.get_propositions_from_file(config.Data.train_data_path)
-        self.dev_propositions = self.get_propositions_from_file(config.Data.dev_data_path)
+        self.train_propositions = self.get_propositions_from_file(config.RemoteDirs.train_data)
+        self.dev_propositions = self.get_propositions_from_file(config.RemoteDirs.dev_data)
 
         self._sorted_words = sorted(self._word_set)
         self._sorted_labels = sorted(self._label_set)
@@ -85,7 +82,7 @@ class Data:
 
         # training with Allen NLP toolkit
         self.token_indexers = {'tokens': SingleIdTokenIndexer()}
-        self.train_instances = self.make_instances(self.train_propositions)  # TODO add predicate id
+        self.train_instances = self.make_instances(self.train_propositions)
         self.dev_instances = self.make_instances(self.dev_propositions)
 
     @property
@@ -158,11 +155,8 @@ class Data:
         assert len(self._word_set) > 0
 
         if self.params.glove:
-            glove_p = config.RemoteDirs.root / (config.Data.glove_path_local or config.Data.glove_path)
-            print('Loading word embeddings at:')
-            print(glove_p)
-
-            df = pd.read_csv(glove_p, sep=" ", quoting=3, header=None, index_col=0)
+            print('Loading word embeddings from {}'.format(config.RemoteDirs.glove))
+            df = pd.read_csv(config.RemoteDirs.glove, sep=" ", quoting=3, header=None, index_col=0)
             w2embed = {key: val.values for key, val in df.T.items()}
             embedding_size = next(iter(w2embed.items()))[1].shape[0]
         else:

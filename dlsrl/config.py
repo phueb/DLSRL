@@ -1,5 +1,4 @@
 from pathlib import Path
-import socket
 import sys
 
 if 'win' in sys.platform:
@@ -17,12 +16,22 @@ class RemoteDirs:
     runs = root / 'runs'
     data = root / 'data'
 
+    train_data = data / 'CONLL05/conll05.train.txt'
+    dev_data = data / 'CONLL05/conll05.dev.txt'
+    test_data = data / 'CONLL05/conll05.test.wsj.txt'
+    glove = data / 'glove.6B.100d.txt'
+
 
 class LocalDirs:
     root = Path(__file__).parent.parent
     src = root / 'dlsrl'
     runs = root / '{}_runs'.format(src.name)
     data = root / 'data'
+
+    train_data = data / 'CONLL05/conll05.train.txt'
+    dev_data = data / 'CONLL05/conll05.dev.txt'
+    test_data = data / 'CONLL05/conll05.test.wsj.txt'
+    glove = data / 'glove.6B.100d.txt'
 
 
 class Global:
@@ -41,12 +50,6 @@ class Data:
 
     pad_word = '<PAD>'
     pad_label = 'B-PAD'  # do not use the letter "O" because evaluation requires only removing padding
-
-    train_data_path = RemoteDirs.data / 'CONLL05/conll05.train.txt'
-    dev_data_path = RemoteDirs.data / 'CONLL05/conll05.dev.txt'
-    test_data_path = RemoteDirs.data / 'CONLL05/conll05.test.wsj.txt'
-    glove_path = RemoteDirs.data / 'glove.6B.100d.txt'
-    glove_path_local = LocalDirs.data / 'glove.6B.100d.txt' if socket.gethostname() == 'Philum' else None
 
     verbose = True
 
