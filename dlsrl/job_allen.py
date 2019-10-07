@@ -198,7 +198,7 @@ def main(param2val):
 
     # to pandas
     eval_epochs = np.arange(params.max_epochs)
-    df_dev_f1 = pd.DataFrame(dev_f1s, index=eval_epochs, columns=['dev_f1'])
+    df_dev_f1 = pd.Series(dev_f1s, index=eval_epochs)
     df_dev_f1.name = 'dev_f1'
 
     return [df_dev_f1]
