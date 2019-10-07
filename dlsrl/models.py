@@ -1,21 +1,123 @@
-from typing import Dict, List, Optional, Any
-
-from overrides import overrides
+from typing import Dict, List, Any, Optional
+import numpy as np
+import tensorflow as tf
 import torch
-from torch.nn.modules import Linear, Dropout
-import torch.nn.functional as F
-
+from allennlp.common import Params as AllenParams
 from allennlp.common.checks import check_dimensions_match
 from allennlp.data import Vocabulary
+from allennlp.models import Model
 from allennlp.models.srl_util import convert_bio_tags_to_conll_format
-from allennlp.modules import Seq2SeqEncoder, TimeDistributed, TextFieldEmbedder
-from allennlp.modules.token_embedders import Embedding
-from allennlp.models.model import Model
+from allennlp.modules import TextFieldEmbedder, Seq2SeqEncoder, Embedding, TimeDistributed
 from allennlp.nn import InitializerApplicator, RegularizerApplicator
-from allennlp.nn.util import get_text_field_mask, sequence_cross_entropy_with_logits
-from allennlp.nn.util import get_lengths_from_binary_sequence_mask, viterbi_decode
+from allennlp.nn.util import get_text_field_mask, sequence_cross_entropy_with_logits, \
+    get_lengths_from_binary_sequence_mask, viterbi_decode
+from overrides import overrides
+from tensorflow.keras import layers
+from torch.nn import Linear, Dropout, functional as F
 
+from dlsrl import config
 from dlsrl.scorer import SrlEvalScorer
+
+
+class TensorflowSRLModel(tf.keras.Model):
+
+    def __init__(self,  data, params, vocab, **kwargs):
+        super(TensorflowSRLModel, self).__init__(name='deep_lstm', **kwargs)
+
+        self.num_classes = vocab.get_vocab_size("labels")
+
+        print('Initializing keras model with in size = {} and out size = {}'.format(
+            len(data.embeddings), self.num_classes))
+
+        self.params = params
+        vocab_size, embed_size = data.embeddings.shape
+
+        # embed word_ids
+        self.embedding1 = layers.Embedding(vocab_size, embed_size,
+                                           embeddings_initializer=tf.keras.initializers.constant(data.embeddings),
+                                           mask_zero=True)  # TODO test mask_zero
+
+        # embed predicate_ids
+        self.embedding2 = layers.Embedding(2, 100)  # TODO test - this is how He et al. did it
+
+        # TODO control gates + orthonormal init of all weight matrices in LSTM
+
+        # He et al., 2017 used recurrent dropout but this prevents using cudnn and takes 10 times longer
+
+        self.lstm1 = layers.LSTM(params.hidden_size, return_sequences=True)
+        self.lstm2 = layers.LSTM(params.hidden_size, return_sequences=True,
+                                 go_backwards=True)
+        self.lstm3 = layers.LSTM(params.hidden_size, return_sequences=True)
+        self.lstm4 = layers.LSTM(params.hidden_size, return_sequences=True,
+                                 go_backwards=True)
+        # self.lstm5 = layers.LSTM(params.hidden_size, return_sequences=True)
+        # self.lstm6 = layers.LSTM(params.hidden_size, return_sequences=True,
+        #                          go_backwards=True)
+        # self.lstm7 = layers.LSTM(params.hidden_size, return_sequences=True)
+        # self.lstm8 = layers.LSTM(params.hidden_size, return_sequences=True,
+        #                          go_backwards=True)
+
+        self.dense_output = layers.Dense(self.num_classes, activation='softmax')
+
+    def __call__(self, *args, **kwargs):
+        """
+        to keep interface consistent with torch:
+        output_dict = model(**batch)
+        """
+        return self.call(*args, **kwargs)
+
+    def eval(self):
+        """
+        to keep interface consistent with torch:
+        """
+        pass
+
+    def train(self):
+        """
+        to keep interface consistent with torch
+        """
+        pass
+
+    def call(self,  # type: ignore
+             tokens: Dict[str, np.ndarray],
+             verb_indicator: np.ndarray,
+             training: bool,
+             tags: np.ndarray = None,
+             metadata: List[Dict[str, Any]] = None) -> Dict[str, np.ndarray]:
+        """
+        x2_b is an array where each row is a one hot vector,
+         where the hot index is the position of the verb in the sequence.
+        this means x2_b should be embedded, retrieving either a vector with a single 1 or single 0.
+        """
+
+        x1_b = tokens['tokens']
+        x2_b = verb_indicator
+
+        # embed
+        embedded1 = self.embedding1(x1_b)
+        embedded2 = self.embedding1(x2_b)  # returns one of two trainable vectors of length 100
+
+        # encoding
+        encoded0 = tf.concat([embedded1, embedded2], axis=2)
+        # returns [batch_size, max_seq_len, embed_size + 100]
+
+        mask = self.embedding1.compute_mask(x1_b)
+        encoded1 = self.lstm1(encoded0, mask=mask, training=training)
+        encoded2 = self.lstm2(encoded1, mask=mask, training=training)
+        encoded3 = self.lstm3(encoded1 + encoded2, mask=mask, training=training)
+        encoded4 = self.lstm4(encoded2 + encoded3, mask=mask, training=training)
+        # encoded5 = self.lstm5(encoded3 + encoded4, mask=mask, training=training)
+        # encoded6 = self.lstm6(encoded4 + encoded5, mask=mask, training=training)
+        # encoded7 = self.lstm7(encoded5 + encoded6, mask=mask, training=training)
+        # encoded8 = self.lstm8(encoded6 + encoded7, mask=mask, training=training)
+        # returns [batch_size, max_seq_len, hidden_size]
+
+        encoded_2d = tf.reshape(encoded3 + encoded4, [-1, self.params.hidden_size])
+        softmax_2d = self.dense_output(encoded_2d)
+        # returns [num_words_in_batch, num_labels]
+
+        output_dict = {'softmax_2d': softmax_2d}
+        return output_dict
 
 
 class AllenSRLModel(Model):
@@ -216,3 +318,59 @@ class AllenSRLModel(Model):
             # This can be a lot of metrics, as there are 3 per class.
             # we only really care about the overall metrics, so we filter for them here.
             return {x: y for x, y in metric_dict.items() if "overall" in x}
+
+
+def make_model(data, params, vocab):
+    if params.my_implementation:
+        return TensorflowSRLModel(data, params, vocab)
+    else:
+        return make_allen_model(data, params, vocab)
+
+
+def make_allen_model(data, params, vocab):
+    # parameters for original model are specified here:
+    # https://github.com/allenai/allennlp/blob/master/training_config/semantic_role_labeler.jsonnet
+
+    # encoder
+    encoder_params = AllenParams(
+        {'type': 'alternating_lstm',
+         'input_size': 200,  # this is glove size + binary feature embedding size = 200
+         'hidden_size': params.hidden_size,
+         'num_layers': params.num_layers,
+         'use_highway': True,
+         'recurrent_dropout_probability': 0.1})
+    encoder = Seq2SeqEncoder.from_params(encoder_params)
+
+    # embedder
+    embedder_params = AllenParams({
+        "token_embedders": {
+            "tokens": {
+                "type": "embedding",
+                "embedding_dim": 100,  # must match glove dimension
+                "pretrained_file": str(data.glove_path),
+                "trainable": True
+            }
+        }
+    })
+    text_field_embedder = TextFieldEmbedder.from_params(embedder_params, vocab=vocab)
+
+    # initializer
+    initializer_params = [
+        ("tag_projection_layer.*weight",
+         AllenParams({"type": "orthogonal"}))
+    ]
+    initializer = InitializerApplicator.from_params(initializer_params)
+
+    # model
+    model = AllenSRLModel(vocab=vocab,
+                          text_field_embedder=text_field_embedder,
+                          encoder=encoder,
+                          initializer=initializer,
+                          binary_feature_dim=100,
+                          ignore_span_metric=config.Eval.ignore_span_metric)  # TODO test
+    model.cuda()
+
+    from allennlp.common.checks import check_for_gpu
+    check_for_gpu(device_id=0)
+
+    return model

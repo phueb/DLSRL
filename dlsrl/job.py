@@ -10,16 +10,13 @@ import pandas as pd
 import torch
 
 from allennlp.data.vocabulary import Vocabulary
-from allennlp.common.params import Params as AllenParams
-from allennlp.modules import Seq2SeqEncoder, TextFieldEmbedder
-from allennlp.nn import InitializerApplicator
 from allennlp.training import util as training_util
 from allennlp.data.iterators import BucketIterator
 
 
 from dlsrl.data import Data
 from dlsrl.eval import f1_official_conll05
-from dlsrl.model import TensorflowSRLModel
+from dlsrl.models import make_model
 from dlsrl import config
 
 
@@ -85,11 +82,15 @@ def main(param2val):
 
     # model
     print('Building model...')
-    model = TensorflowSRLModel(data, params, vocab)
+    model = make_model(data, params, vocab)
 
-    optimizer = tf.optimizers.Adadelta(learning_rate=params.learning_rate,
-                                       epsilon=params.epsilon,
-                                       clipnorm=params.max_grad_norm)
+    # optimizer
+    if params.my_implementation:
+        optimizer = tf.optimizers.Adadelta(learning_rate=params.learning_rate,
+                                           epsilon=params.epsilon,
+                                           clipnorm=params.max_grad_norm)
+    else:
+        optimizer = torch.optim.Adadelta(params=model.parameters(), lr=params.learning_rate, eps=params.epsilon)
 
     # train loop
     dev_f1s = []
@@ -108,6 +109,7 @@ def main(param2val):
         all_verb_indices = []
         all_sentences_no_pad = []
 
+        model.eval()
         dev_generator = bucket_batcher(data.dev_instances, num_epochs=1)
         for step, batch in enumerate(dev_generator):
 
@@ -123,9 +125,10 @@ def main(param2val):
             batch['tokens']['tokens'] = x1_b
             batch['verb_indicator'] = x2_b
             batch['tags'] = y_b
+            batch['training'] = False
 
             # get predictions (softmax_3d has shape [mb_size, max_sent_length, num_classes])
-            output_dict = model(x1_b, x2_b, training=False)
+            output_dict = model(**batch)
             softmax_3d = np.reshape(output_dict['softmax_2d'],
                                     (*np.shape(x1_b), model.num_classes))  # 1st dim is batch_
 
@@ -185,6 +188,7 @@ def main(param2val):
         # ----------------------------------------------- end evaluation
 
         # train on batches
+        model.train()
         train_generator = bucket_batcher(data.train_instances, num_epochs=1)
         for step, batch in enumerate(train_generator):
 
@@ -196,10 +200,11 @@ def main(param2val):
             batch['tokens']['tokens'] = x1_b
             batch['verb_indicator'] = x2_b
             batch['tags'] = y_b
+            batch['training'] = True
 
             # forward + loss
             with tf.GradientTape() as tape:
-                output_dict = model(x1_b, x2_b, training=True)
+                output_dict = model(**batch)
                 y_true = y_b.reshape([-1])
                 y_pred = output_dict['softmax_2d']
                 loss = masked_sparse_categorical_crossentropy(y_true=y_true, y_pred=y_pred)

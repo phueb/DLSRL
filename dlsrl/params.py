@@ -9,7 +9,8 @@ param2default = {
     'max_epochs': 500,
     'learning_rate': 0.95,
     'epsilon': 1e-6,
-    'glove': True
+    'glove': True,
+    'my_implementation': False
 }
 
 # used to overwrite parameters when --debug flag is on (when calling "ludwig-local")
@@ -18,5 +19,6 @@ param2debug = {'max_epochs': 500,
                }
 
 param2requests = {
+    'my_implementation': [True, False],
     'max_epochs': [10, 50, 100, 200, 500]
 }

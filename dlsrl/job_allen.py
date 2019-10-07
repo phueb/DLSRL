@@ -10,16 +10,13 @@ import pandas as pd
 import torch
 
 from allennlp.data.vocabulary import Vocabulary
-from allennlp.common.params import Params as AllenParams
-from allennlp.modules import Seq2SeqEncoder, TextFieldEmbedder
-from allennlp.nn import InitializerApplicator
 from allennlp.training import util as training_util
 from allennlp.data.iterators import BucketIterator
 
 
 from dlsrl.data import Data
 from dlsrl.eval import f1_official_conll05
-from dlsrl.model_allen import AllenSRLModel
+from dlsrl.models import make_model
 from dlsrl import config
 
 
@@ -75,7 +72,13 @@ def main(param2val):
     print('Building model...')
     model = make_model(data, params, vocab)
 
-    optimizer = torch.optim.Adadelta(params=model.parameters(), lr=params.learning_rate, eps=params.epsilon)
+    # optimizer
+    if params.my_implementation:
+        optimizer = tf.optimizers.Adadelta(learning_rate=params.learning_rate,
+                                           epsilon=params.epsilon,
+                                           clipnorm=params.max_grad_norm)
+    else:
+        optimizer = torch.optim.Adadelta(params=model.parameters(), lr=params.learning_rate, eps=params.epsilon)
 
     # train loop
     dev_f1s = []
@@ -202,52 +205,3 @@ def main(param2val):
     df_dev_f1.name = 'dev_f1'
 
     return [df_dev_f1]
-
-
-def make_model(data, params, vocab):
-    # parameters for original model are specified here:
-    # https://github.com/allenai/allennlp/blob/master/training_config/semantic_role_labeler.jsonnet
-
-    # encoder
-    encoder_params = AllenParams(
-        {'type': 'alternating_lstm',
-         'input_size': 200,  # this is glove size + binary feature embedding size = 200
-         'hidden_size': params.hidden_size,
-         'num_layers': params.num_layers,
-         'use_highway': True,
-         'recurrent_dropout_probability': 0.1})
-    encoder = Seq2SeqEncoder.from_params(encoder_params)
-
-    # embedder
-    embedder_params = AllenParams({
-        "token_embedders": {
-            "tokens": {
-                "type": "embedding",
-                "embedding_dim": 100,  # must match glove dimension
-                "pretrained_file": str(data.glove_path),
-                "trainable": True
-            }
-        }
-    })
-    text_field_embedder = TextFieldEmbedder.from_params(embedder_params, vocab=vocab)
-
-    # initializer
-    initializer_params = [
-        ("tag_projection_layer.*weight",
-         AllenParams({"type": "orthogonal"}))
-    ]
-    initializer = InitializerApplicator.from_params(initializer_params)
-
-    # model
-    model = AllenSRLModel(vocab=vocab,
-                          text_field_embedder=text_field_embedder,
-                          encoder=encoder,
-                          initializer=initializer,
-                          binary_feature_dim=100,
-                          ignore_span_metric=config.Eval.ignore_span_metric)  # TODO test
-    model.cuda()
-
-    from allennlp.common.checks import check_for_gpu
-    check_for_gpu(device_id=0)
-
-    return model
