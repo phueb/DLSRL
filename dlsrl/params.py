@@ -18,5 +18,5 @@ param2debug = {'max_epochs': 500,
                }
 
 param2requests = {
-    'hidden_size': [256, 256, 256, 256]
+    'hidden_size': [256, 256, 256, 256]  # TODO does Ludwig treat this as four unique param_names?
 }

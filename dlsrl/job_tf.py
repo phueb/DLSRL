@@ -5,13 +5,19 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import time
 import sys
-from sklearn.metrics import f1_score
 import numpy as np
 import pandas as pd
 
+from allennlp.data.vocabulary import Vocabulary
+from allennlp.common.params import Params as AllenParams
+from allennlp.modules import Seq2SeqEncoder, TextFieldEmbedder
+from allennlp.nn import InitializerApplicator
+from allennlp.training import util as training_util
+from allennlp.data.iterators import BucketIterator
+
+
 from dlsrl.data import Data
-from dlsrl.utils import get_batches, shuffle_stack_pad, count_zeros_from_end
-from dlsrl.eval import print_f1, f1_official_conll05
+from dlsrl.eval import f1_official_conll05
 from dlsrl.model_tf import TensorflowSRLModel
 from dlsrl import config
 
@@ -52,6 +58,11 @@ def masked_sparse_categorical_crossentropy(y_true, y_pred, mask_value=0):
 
 
 def main(param2val):
+
+    if config.Global.local:
+        print('WARNING: Loading data locally because debugging=True')
+        config.RemoteDirs = config.LocalDirs
+
     # params
     params = Params(param2val)
     print(params)
@@ -62,17 +73,22 @@ def main(param2val):
     if not local_job_p.exists():
         local_job_p.mkdir(parents=True)
 
-    # data
-    data = Data(params)  # TODO make tf.data.Dataset? + use smarter batching function to reduce amount of padding
+    # data + vocab
+    print('Building data...')
+    data = Data(params)
+    vocab = Vocabulary.from_instances(data.train_instances + data.dev_instances)
+
+    # batching
+    bucket_batcher = BucketIterator(batch_size=params.batch_size, sorting_keys=[('tokens', "num_tokens")])
+    bucket_batcher.index_with(vocab)
 
     # model
+    print('Building model...')
     model_tf = TensorflowSRLModel(params, data.embeddings, data.num_labels)
 
     optimizer = tf.optimizers.Adadelta(learning_rate=params.learning_rate,
                                        epsilon=params.epsilon,
                                        clipnorm=params.max_grad_norm)
-
-    cross_entropy = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
 
     # train loop
     dev_f1s = []
@@ -83,21 +99,7 @@ def main(param2val):
         print('Epoch: {}'.format(epoch))
         print('===========')
 
-        # TODO save checkpoint from which to load model
-        ckpt_p = local_job_p / "epoch_{}.ckpt".format(epoch)
-
-        # prepare data for epoch
-        train_x1, train_x2, train_y = shuffle_stack_pad(data.train,
-                                                        batch_size=params.batch_size)  # returns int32
-        dev_x1, dev_x2, dev_y = shuffle_stack_pad(data.dev,
-                                                  batch_size=config.Eval.dev_batch_size,
-                                                  shuffle=False)
-
         # ----------------------------------------------- start evaluation
-
-        # per-label f1 evaluation
-        all_gold_label_ids_no_pad = []
-        all_pred_label_ids_no_pad = []
 
         # conll05 evaluation data
         all_sentence_pred_labels_no_pad = []
@@ -105,51 +107,59 @@ def main(param2val):
         all_verb_indices = []
         all_sentences_no_pad = []
 
-        # TODO use batching machinery from job.py here because i know it is correct
+        dev_generator = bucket_batcher(data.dev_instances, num_epochs=1)
+        for step, batch in enumerate(dev_generator):
 
-        for step, (x1_b, x2_b, y_b) in enumerate(get_batches(dev_x1, dev_x2, dev_y, config.Eval.dev_batch_size)):
+            if len(batch['tags']) != params.batch_size:
+                print('WARNING: Batch size is {}. Skipping'.format(len(batch['tags'])))
+                continue
 
-            # get predicted label_ids from model
+            y_b = batch['tags'].cpu().numpy()
+            x1_b = batch['tokens']['tokens'].cpu().numpy()
+            x2_b = batch['verb_indicator'].cpu().numpy()
+
+            # get predictions
             softmax_2d = model_tf(x1_b, x2_b, training=False)  # [num words in batch, num_labels]
-            softmax_3d = np.reshape(softmax_2d, (*np.shape(x1_b), data.num_labels))  # 1st dim is batch_size
+            softmax_3d = np.reshape(softmax_2d, (*np.shape(x1_b), data.num_labels))  # 1st dim is batch_
+
+            # get words and verb_indices
+            sentences_b = []
+            verb_indices_b = []
+            for row in batch['metadata']:  # this is correct
+                sentence = row['words']
+                verb_index = row['verb_index']
+                sentences_b.append(sentence)
+                verb_indices_b.append(verb_index)
+
+            # get gold and predicted label IDs
             batch_pred_label_ids = np.argmax(softmax_3d, axis=2)  # [batch_size, seq_length]
             batch_gold_label_ids = y_b  # [batch_size, seq_length]
-            assert np.shape(batch_pred_label_ids) == (config.Eval.dev_batch_size, np.shape(x1_b)[1])
+            assert np.shape(batch_pred_label_ids) == (params.batch_size, np.shape(x1_b)[1])
+            assert np.shape(batch_gold_label_ids) == (params.batch_size, np.shape(x1_b)[1])
 
             # collect data for evaluation
-            for x1_row, x2_row, gold_label_ids, pred_label_ids, in zip(x1_b,
-                                                                       x2_b,
-                                                                       batch_gold_label_ids,
-                                                                       batch_pred_label_ids):
+            for x1_row, x2_row, gold_label_ids, pred_label_ids, s, vi in zip(x1_b,
+                                                                             x2_b,
+                                                                             batch_gold_label_ids,
+                                                                             batch_pred_label_ids,
+                                                                             sentences_b,
+                                                                             verb_indices_b):
 
-                sentence_length = len(x1_row) - count_zeros_from_end(x1_row)
-
-                assert count_zeros_from_end(x1_row) == count_zeros_from_end(gold_label_ids)
-                sentence_gold_labels = [data._sorted_labels[i] for i in gold_label_ids]
-                sentence_pred_labels = [data._sorted_labels[i] for i in pred_label_ids]
-                verb_index = np.argmax(x2_row)
-                sentence = [data._sorted_words[i] for i in x1_row]
+                # convert IDs to tokens
+                sentence_pred_labels = [vocab.get_token_from_index(i, namespace="labels")
+                                        for i in pred_label_ids]
+                sentence_gold_labels = [vocab.get_token_from_index(i, namespace="labels")
+                                        for i in gold_label_ids]
 
                 # collect data for conll-05 evaluation + remove padding
+                sentence_length = len(s)
                 all_sentence_pred_labels_no_pad.append(sentence_pred_labels[:sentence_length])
                 all_sentence_gold_labels_no_pad.append(sentence_gold_labels[:sentence_length])
-                all_verb_indices.append(verb_index)
-                all_sentences_no_pad.append(sentence[:sentence_length])
-
-                # collect data for per-label evaluation
-                all_gold_label_ids_no_pad += list(gold_label_ids[:sentence_length])
-                all_pred_label_ids_no_pad += list(pred_label_ids[:sentence_length])
-
-        print('Number of sentences to evaluate: {}'.format(len(all_sentences_no_pad)))
+                all_verb_indices.append(vi)
+                all_sentences_no_pad.append(s)
 
         for label in all_sentence_gold_labels_no_pad:
             assert label != config.Data.pad_label
-
-        # evaluate f1 score computed over single labels (not spans)
-        # f1_score expects 1D label ids (e.g. gold=[0, 2, 1, 0], pred=[0, 1, 1, 0])
-        print_f1(epoch, 'weight', f1_score(all_gold_label_ids_no_pad, all_pred_label_ids_no_pad, average='weighted'))
-        print_f1(epoch, 'macro ', f1_score(all_gold_label_ids_no_pad, all_pred_label_ids_no_pad, average='macro'))
-        print_f1(epoch, 'micro ', f1_score(all_gold_label_ids_no_pad, all_pred_label_ids_no_pad, average='micro'))
 
         # evaluate with official conll05 perl script with Python interface provided by Allen AI NLP toolkit
         sys.stdout.flush()
@@ -159,24 +169,27 @@ def main(param2val):
                                      all_sentence_gold_labels_no_pad,  # List[List[str]]
                                      all_verb_indices,  # List[Optional[int]]
                                      all_sentences_no_pad)  # List[List[str]]
-        print_f1(epoch, 'conll-05', dev_f1)
-        dev_f1s.append(dev_f1)
         print('=============================================')
         sys.stdout.flush()
+
+        # collect
+        dev_f1s.append(dev_f1)
 
         # ----------------------------------------------- end evaluation
 
         # train on batches
-        for step, (x1_b, x2_b, y_b) in enumerate(get_batches(train_x1, train_x2, train_y, params.batch_size)):
+        train_generator = bucket_batcher(data.train_instances, num_epochs=1)
+        for step, batch in enumerate(train_generator):
+
+            x1_b = batch['tokens']['tokens'] = batch['tokens']['tokens'].cpu().numpy()
+            x2_b = batch['verb_indicator'].cpu().numpy()
+            y_b = batch['tags'].cpu().numpy()
 
             with tf.GradientTape() as tape:
                 softmax_2d = model_tf(x1_b, x2_b, training=True)  # returns [num words in batch, num_labels]
                 y_true = y_b.reshape([-1])
                 y_pred = softmax_2d
-                # loss = cross_entropy(y_true=y_true,
-                #                      y_pred=y_pred)
 
-                # this masked loss function is different than above and does not decrease as fast
                 loss = masked_sparse_categorical_crossentropy(y_true=y_true, y_pred=y_pred)
 
             grads = tape.gradient(loss, model_tf.trainable_weights)

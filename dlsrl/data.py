@@ -17,12 +17,6 @@ class Data:
     def __init__(self, params):
         self.params = params
 
-        # ----------------------------------------------------------- if ludwig-local --debug
-
-        if config.Global.debug:
-            print('WARNING: Loading data locally because debugging=True')
-            config.RemoteDirs = config.LocalDirs
-
         # ----------------------------------------------------------- words & labels
 
         self._word_set = set()  # holds words from both train and dev
@@ -71,6 +65,11 @@ class Data:
         print('/////////////////////////////')
 
         # -------------------------------------------------------- embeddings
+
+        if config.LocalDirs.glove.exists():
+            self.glove_path = config.LocalDirs.glove
+        else:
+            self.glove_path = config.RemoteDirs.glove
 
         self.embeddings = self.make_embeddings()
 
@@ -155,8 +154,8 @@ class Data:
         assert len(self._word_set) > 0
 
         if self.params.glove:
-            print('Loading word embeddings from {}'.format(config.RemoteDirs.glove))
-            df = pd.read_csv(config.RemoteDirs.glove, sep=" ", quoting=3, header=None, index_col=0)
+            print('Loading word embeddings from {}'.format(self.glove_path))
+            df = pd.read_csv(self.glove_path, sep=" ", quoting=3, header=None, index_col=0)
             w2embed = {key: val.values for key, val in df.T.items()}
             embedding_size = next(iter(w2embed.items()))[1].shape[0]
         else:

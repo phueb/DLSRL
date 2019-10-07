@@ -13,7 +13,6 @@ from allennlp.data.iterators import BucketIterator
 
 
 from dlsrl.data import Data
-from dlsrl.utils import get_batches, shuffle_stack_pad, count_zeros_from_end
 from dlsrl.eval import f1_official_conll05
 from dlsrl.model import AllenSRLModel
 from dlsrl import config
@@ -43,6 +42,11 @@ class Params:
 
 
 def main(param2val):
+
+    if config.Global.local:
+        print('WARNING: Loading data locally because config.Global.local=True')
+        config.RemoteDirs = config.LocalDirs
+
     # params
     params = Params(param2val)
     print(params)
@@ -53,63 +57,20 @@ def main(param2val):
     if not local_job_p.exists():
         local_job_p.mkdir(parents=True)
 
-    # data
+    # data + vocab
+    print('Building data...')
     data = Data(params)
-
-    # vocab
     vocab = Vocabulary.from_instances(data.train_instances + data.dev_instances)
 
-    # parameters for original model are specified here:
-    # https://github.com/allenai/allennlp/blob/master/training_config/semantic_role_labeler.jsonnet
-
-    # encoder
-    encoder_params = AllenParams(
-        {'type': 'alternating_lstm',
-         'input_size': 200,  # this is glove size + binary feature embedding size = 200
-         'hidden_size': params.hidden_size,
-         'num_layers': params.num_layers,
-         'use_highway': True,
-         'recurrent_dropout_probability': 0.1})
-    encoder = Seq2SeqEncoder.from_params(encoder_params)
-
-    # embedder
-    embedder_params = AllenParams({
-        "token_embedders": {
-            "tokens": {
-                "type": "embedding",
-                "embedding_dim": 100,  # must match glove dimension
-                "pretrained_file": str(config.Data.glove_path_local),
-                "trainable": True
-            }
-        }
-    })
-    text_field_embedder = TextFieldEmbedder.from_params(embedder_params, vocab=vocab)
-
-    # initializer
-    initializer_params = [
-        ("tag_projection_layer.*weight",
-         AllenParams({"type": "orthogonal"}))
-    ]
-    initializer = InitializerApplicator.from_params(initializer_params)
+    # batching
+    bucket_batcher = BucketIterator(batch_size=params.batch_size, sorting_keys=[('tokens', "num_tokens")])
+    bucket_batcher.index_with(vocab)
 
     # model
-    model = AllenSRLModel(vocab=vocab,
-                          text_field_embedder=text_field_embedder,
-                          encoder=encoder,
-                          initializer=initializer,
-                          binary_feature_dim=100,
-                          ignore_span_metric=config.Eval.ignore_span_metric)  # TODO test
-    model.cuda()
-
-    from allennlp.common.checks import check_for_gpu
-    check_for_gpu(device_id=0)
+    print('Building model...')
+    model = make_model(data, params, vocab)
 
     optimizer = torch.optim.Adadelta(params=model.parameters(), lr=params.learning_rate, eps=params.epsilon)
-
-    bucket_batcher = BucketIterator(batch_size=params.batch_size,
-                                    sorting_keys=[('tokens', "num_tokens")])
-
-    bucket_batcher.index_with(vocab)
 
     # train loop
     dev_f1s = []
@@ -136,6 +97,10 @@ def main(param2val):
                 print('WARNING: Batch size is {}. Skipping'.format(len(batch['tags'])))
                 continue
 
+            y_b = batch['tags'].cpu().numpy()
+            x1_b = batch['tokens']['tokens'].cpu().numpy()
+            x2_b = batch['verb_indicator'].cpu().numpy()
+
             # to CUDA
             batch['tokens']['tokens'] = batch['tokens']['tokens'].cuda()
             batch['verb_indicator'] = batch['verb_indicator'].cuda()
@@ -144,12 +109,6 @@ def main(param2val):
             # get predictions (softmax_3d has shape [mb_size, max_sent_length, num_labels])
             output_dict = model(**batch)  # input is dict[str, torch tensor]
             softmax_3d = output_dict['class_probabilities'].detach().cpu().numpy()  # 1st dim is batch_size
-
-            # TODO implement custom f1 evaluation
-
-            y_b = batch['tags'].cpu().numpy()
-            x1_b = batch['tokens']['tokens'].cpu().numpy()
-            x2_b = batch['verb_indicator'].cpu().numpy()
 
             # get words and verb_indices
             sentences_b = []
@@ -229,12 +188,61 @@ def main(param2val):
             optimizer.step()
 
             if step % config.Eval.loss_interval == 0:
-                print('global-step={:<6}: loss={:2.2f} global-elapsed={:<3}minutes'.format(
-                    step * (epoch + 1), loss.item(), int((time.time() - train_start) // 60)))
+                print('step {:<6}: loss={:2.2f} total minutes elapsed={:<3}'.format(
+                    step, loss, (time.time() - train_start) // 60))
 
     # to pandas
     eval_epochs = np.arange(params.max_epochs)
-    df_dev_f1 = pd.Series(dev_f1s, index=eval_epochs, columns=['dev_f1'])
+    df_dev_f1 = pd.DataFrame(dev_f1s, index=eval_epochs, columns=['dev_f1'])
     df_dev_f1.name = 'dev_f1'
 
     return [df_dev_f1]
+
+
+def make_model(data, params, vocab):
+    # parameters for original model are specified here:
+    # https://github.com/allenai/allennlp/blob/master/training_config/semantic_role_labeler.jsonnet
+
+    # encoder
+    encoder_params = AllenParams(
+        {'type': 'alternating_lstm',
+         'input_size': 200,  # this is glove size + binary feature embedding size = 200
+         'hidden_size': params.hidden_size,
+         'num_layers': params.num_layers,
+         'use_highway': True,
+         'recurrent_dropout_probability': 0.1})
+    encoder = Seq2SeqEncoder.from_params(encoder_params)
+
+    # embedder
+    embedder_params = AllenParams({
+        "token_embedders": {
+            "tokens": {
+                "type": "embedding",
+                "embedding_dim": 100,  # must match glove dimension
+                "pretrained_file": str(data.glove_path),
+                "trainable": True
+            }
+        }
+    })
+    text_field_embedder = TextFieldEmbedder.from_params(embedder_params, vocab=vocab)
+
+    # initializer
+    initializer_params = [
+        ("tag_projection_layer.*weight",
+         AllenParams({"type": "orthogonal"}))
+    ]
+    initializer = InitializerApplicator.from_params(initializer_params)
+
+    # model
+    model = AllenSRLModel(vocab=vocab,
+                          text_field_embedder=text_field_embedder,
+                          encoder=encoder,
+                          initializer=initializer,
+                          binary_feature_dim=100,
+                          ignore_span_metric=config.Eval.ignore_span_metric)  # TODO test
+    model.cuda()
+
+    from allennlp.common.checks import check_for_gpu
+    check_for_gpu(device_id=0)
+
+    return model
