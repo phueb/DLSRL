@@ -1,5 +1,4 @@
 import numpy as np
-import sys
 
 from dlsrl.scorer_utils import convert_bio_tags_to_conll_format
 from dlsrl.scorer import SrlEvalScorer
@@ -67,24 +66,7 @@ def evaluate_model_on_dev(model, params, data, vocab, bucket_batcher):
             all_verb_indices.append(vi)
             all_sentences.append(s)
 
-    # evaluate with official conll05 perl script with Python interface provided by Allen AI NLP toolkit
-    sys.stdout.flush()
-    print('Official Conll-05 Evaluation on Dev Split')
-    dev_f1 = f1_official_conll05(all_bio_pred_labels,   # List[List[str]]
-                                 all_bio_gold_labels,   # List[List[str]]
-                                 all_verb_indices,                  # List[Optional[int]]
-                                 all_sentences)              # List[List[str]]
-    sys.stdout.flush()
-
-    return dev_f1
-
-
-def f1_official_conll05(all_bio_pred_labels,  # List[List[str]]
-                        all_bio_gold_labels,  # List[List[str]]
-                        all_verb_indices,  # List[Optional[int]]
-                        all_sentences,  # List[List[str]]
-                        ):
-
+    # convert to conll format
     all_conll_predicted_tags = [convert_bio_tags_to_conll_format(tags) for
                                 tags in all_bio_pred_labels]
     all_conll_gold_tags = [convert_bio_tags_to_conll_format(tags) for

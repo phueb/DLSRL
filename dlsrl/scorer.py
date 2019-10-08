@@ -25,7 +25,13 @@ class SrlEvalScorer:
     """
     def __init__(self, ignore_classes=None):
 
-        self._srl_eval_path = str(config.RemoteDirs.srl_eval_script)  # The path to the srl-eval.pl script.
+        # added by ph
+        if config.LocalDirs.srl_eval_script.exists():
+            srl_eval_path = config.LocalDirs.srl_eval_script
+        else:
+            srl_eval_path = config.RemoteDirs.srl_eval_script
+
+        self._srl_eval_path = str(srl_eval_path)  # The path to the srl-eval.pl script.
         self._ignore_classes = set(ignore_classes)
 
         # These will hold per label span counts.
