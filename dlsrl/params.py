@@ -22,7 +22,7 @@ param2debug = {'max_epochs': 500,
                }
 
 param2requests = {
-    'my_implementation': [True],
+    'my_implementation': [False],
     'max_epochs': [50]
 }
 

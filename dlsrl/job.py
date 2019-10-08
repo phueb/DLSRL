@@ -12,7 +12,7 @@ from allennlp.data.iterators import BucketIterator
 
 
 from dlsrl.data import Data
-from dlsrl.eval import evaluate_model_on_dev
+from dlsrl.eval import evaluate_model_on_f1
 from dlsrl.models import make_model_and_optimizer
 from dlsrl import config
 
@@ -73,31 +73,47 @@ def main(param2val):
     model, optimizer = make_model_and_optimizer(params, vocab, glove_path)
 
     # train + eval loop
+    train_f1s = []
     dev_f1s = []
     train_start = time.time()
     for epoch in range(params.max_epochs):
 
         print('\nEpoch: {}'.format(epoch))
 
-        # eval on dev propositions
-        dev_f1 = evaluate_model_on_dev(model, params, data, vocab, bucket_batcher)
+        # batch generators
+        train_generator = bucket_batcher(data.train_instances, num_epochs=1)
+        dev_generator = bucket_batcher(data.dev_instances, num_epochs=1)
+
+        # eval using official conll05 perl script
+        model.eval()
+        train_f1 = 0.0 if epoch == 0 else evaluate_model_on_f1(model, params, vocab, train_generator)
+        dev_f1   = 0.0 if epoch == 0 else evaluate_model_on_f1(model, params, vocab, dev_generator)
+        train_f1s.append(train_f1)
         dev_f1s.append(dev_f1)
+
+        # print
+        if not config.Eval.verbose:
+            sys.stdout.flush()
+            print('Official Conll-05 Evaluation:')
+            print('train f1: {:2.2f}'.format(train_f1))
+            print('dev f1  : {:2.2f}'.format(dev_f1))
+            print()
+            sys.stdout.flush()
 
         # train
         model.train()
-        train_generator = bucket_batcher(data.train_instances, num_epochs=1)
         for step, batch in enumerate(train_generator):
-
             batch['training'] = True
             loss = model.train_on_batch(batch, optimizer)
-
+            # print
             if step % config.Eval.loss_interval == 0:
                 print('step {:<6}: loss={:2.2f} total minutes elapsed={:<3}'.format(
                     step, loss, (time.time() - train_start) // 60))
 
     # to pandas
-    eval_epochs = np.arange(params.max_epochs)
-    df_dev_f1 = pd.Series(dev_f1s, index=eval_epochs)
-    df_dev_f1.name = 'dev_f1'
+    s1 = pd.Series(train_f1s, index=np.arange(params.max_epochs))
+    s1.name = 'train_f1'
+    s2 = pd.Series(dev_f1s, index=np.arange(params.max_epochs))
+    s2.name = 'dev_f1'
 
-    return [df_dev_f1]
+    return [s1, s2]
