@@ -92,13 +92,12 @@ def main(param2val):
         dev_f1s.append(dev_f1)
 
         # print
-        if not config.Eval.verbose:
-            sys.stdout.flush()
-            print('Official Conll-05 Evaluation:')
-            print('train f1: {:2.2f}'.format(train_f1))
-            print('dev f1  : {:2.2f}'.format(dev_f1))
-            print()
-            sys.stdout.flush()
+        sys.stdout.flush()
+        print('Official Conll-05 Evaluation:')
+        print('train f1: {:2.2f}'.format(train_f1))
+        print('dev f1  : {:2.2f}'.format(dev_f1))
+        print()
+        sys.stdout.flush()
 
         # train
         model.train()
