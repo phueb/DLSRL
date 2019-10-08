@@ -381,7 +381,7 @@ class AllenSRLModel(Model):
 
         # backward + update
         loss.backward()
-        rescale_gradients(self, self.params.max_grad_norm)
+        rescale_gradients(self, self.max_grad_norm)
         optimizer.step()
 
         return loss
@@ -415,12 +415,15 @@ def make_allen_model(params, vocab, glove_path):
     # parameters for original model are specified here:
     # https://github.com/allenai/allennlp/blob/master/training_config/semantic_role_labeler.jsonnet
 
+    # do not change - these values are used in original model
     glove_size = 100
+    binary_feature_dim = 100
+    max_grad_norm = 1.0
 
     # encoder
     encoder_params = AllenParams(
         {'type': 'alternating_lstm',
-         'input_size': glove_size + params.binary_feature_dim,
+         'input_size': glove_size + binary_feature_dim,
          'hidden_size': params.hidden_size,
          'num_layers': params.num_layers,
          'use_highway': True,
@@ -452,10 +455,10 @@ def make_allen_model(params, vocab, glove_path):
                           text_field_embedder=text_field_embedder,
                           encoder=encoder,
                           initializer=initializer,
-                          binary_feature_dim=params.binary_feature_dim,
+                          binary_feature_dim=binary_feature_dim,
                           ignore_span_metric=config.Eval.ignore_span_metric)
     model.cuda()
-    model.params = params
+    model.max_grad_norm = max_grad_norm
     return model
 
 

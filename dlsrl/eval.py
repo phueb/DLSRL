@@ -5,7 +5,7 @@ from dlsrl.scorer_utils import convert_bio_tags_to_conll_format
 from dlsrl.scorer import SrlEvalScorer
 
 
-def evaluate_model_on_f1(model, params, vocab, batch_generator):
+def evaluate_model_on_dev(model, params, data, vocab, bucket_batcher):
 
     # inits
     all_bio_pred_labels = []  # no padding allowed
@@ -13,7 +13,9 @@ def evaluate_model_on_f1(model, params, vocab, batch_generator):
     all_verb_indices = []
     all_sentences = []
 
-    for step, batch in enumerate(batch_generator):
+    model.eval()
+    dev_generator = bucket_batcher(data.dev_instances, num_epochs=1)
+    for step, batch in enumerate(dev_generator):
 
         if len(batch['tags']) != params.batch_size:
             print('WARNING: Batch size is {}. Skipping'.format(len(batch['tags'])))
@@ -24,26 +26,31 @@ def evaluate_model_on_f1(model, params, vocab, batch_generator):
         output_dict = model(**batch)            # input is dict[str, tensor]
         softmax_3d = output_dict['softmax_3d']  # [mb_size, max_sent_length, num_labels]
 
+        # get words and verb_indices
+        sentences_b = []
+        verb_indices_b = []
+        for row in batch['metadata']:
+            sentence = row['words']
+            verb_index = row['verb_index']
+            sentences_b.append(sentence)
+            verb_indices_b.append(verb_index)
+
         # do evaluation with numpy
         y_b = batch['tags'].cpu().numpy()
         x1_b = batch['tokens']['tokens'].cpu().numpy()
         x2_b = batch['verb_indicator'].cpu().numpy()
 
-        # get gold and predicted label IDs - no viterbi decoding
-        pred_label_ids_b = np.argmax(softmax_3d, axis=2)  # [batch_size, seq_length]
-        gold_label_ids_b = y_b  # [batch_size, seq_length]
-        assert np.shape(pred_label_ids_b) == (params.batch_size, np.shape(x1_b)[1])
-        assert np.shape(gold_label_ids_b) == (params.batch_size, np.shape(x1_b)[1])
-
-        # get sentences and verb_indices
-        sentences_b = [row['words'] for row in batch['metadata']]
-        verb_indices_b = [row['verb_index'] for row in batch['metadata']]
+        # get gold and predicted label IDs
+        batch_pred_label_ids = np.argmax(softmax_3d, axis=2)  # [batch_size, seq_length]
+        batch_gold_label_ids = y_b  # [batch_size, seq_length]
+        assert np.shape(batch_pred_label_ids) == (params.batch_size, np.shape(x1_b)[1])
+        assert np.shape(batch_gold_label_ids) == (params.batch_size, np.shape(x1_b)[1])
 
         # collect data for evaluation
         for x1_row, x2_row, gold_label_ids, pred_label_ids, s, vi in zip(x1_b,
                                                                          x2_b,
-                                                                         gold_label_ids_b,
-                                                                         pred_label_ids_b,
+                                                                         batch_gold_label_ids,
+                                                                         batch_pred_label_ids,
                                                                          sentences_b,
                                                                          verb_indices_b):
 
@@ -60,7 +67,24 @@ def evaluate_model_on_f1(model, params, vocab, batch_generator):
             all_verb_indices.append(vi)
             all_sentences.append(s)
 
-    # convert bio to conll format
+    # evaluate with official conll05 perl script with Python interface provided by Allen AI NLP toolkit
+    sys.stdout.flush()
+    print('Official Conll-05 Evaluation on Dev Split')
+    dev_f1 = f1_official_conll05(all_bio_pred_labels,   # List[List[str]]
+                                 all_bio_gold_labels,   # List[List[str]]
+                                 all_verb_indices,                  # List[Optional[int]]
+                                 all_sentences)              # List[List[str]]
+    sys.stdout.flush()
+
+    return dev_f1
+
+
+def f1_official_conll05(all_bio_pred_labels,  # List[List[str]]
+                        all_bio_gold_labels,  # List[List[str]]
+                        all_verb_indices,  # List[Optional[int]]
+                        all_sentences,  # List[List[str]]
+                        ):
+
     all_conll_predicted_tags = [convert_bio_tags_to_conll_format(tags) for
                                 tags in all_bio_pred_labels]
     all_conll_gold_tags = [convert_bio_tags_to_conll_format(tags) for

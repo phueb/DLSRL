@@ -37,6 +37,7 @@ The F1 score on the development set for the first three epochs should be approxi
 * epoch 0: ~ 0
 * epoch 1: ~22
 * epoch 2: ~43
+* epoch 3: ~50
 
 ## Compatibility
 
