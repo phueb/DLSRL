@@ -24,7 +24,7 @@ from dlsrl import config
 from dlsrl.scorer import SrlEvalScorer
 
 
-def masked_sparse_categorical_crossentropy(y_true, y_pred, mask_value=0):
+def masked_sparse_categorical_crossentropy(y_true, y_pred, mask_value):
     mask_value = tf.Variable(mask_value)
     mask = tf.equal(y_true, mask_value)
     mask = 1 - tf.cast(mask, tf.float32)
@@ -47,40 +47,37 @@ class TensorflowSRLModel(tf.keras.Model):
         super(TensorflowSRLModel, self).__init__(name='deep_lstm', **kwargs)
 
         self.num_classes = vocab.get_vocab_size("labels")
+        self.padding_id = vocab.get_token_index(vocab._padding_token)
+        assert self.padding_id == 0
+
         self.params = params
-        vocab_size, embed_size = embeddings.shape
+        num_embeddings, embed_size = embeddings.shape
+        assert num_embeddings == vocab.get_vocab_size('tokens')
 
         print('Initializing keras model with in size = {} and out size = {}'.format(
-            vocab_size, self.num_classes))
+            num_embeddings, self.num_classes))
 
         # ---------------------- define feed-forward ops
 
-        # embed word_ids
-        self.embedding1 = layers.Embedding(vocab_size, embed_size,
-                                           embeddings_initializer=tf.keras.initializers.constant(embeddings),
-                                           mask_zero=True)
+        # embed
+        self.embedding1 = layers.Embedding(num_embeddings, embed_size,
+                                           mask_zero=True,
+                                           embeddings_initializer=tf.keras.initializers.constant(embeddings))
+        self.embedding2 = layers.Embedding(2, params.binary_feature_dim)  # this is how He et al. did it
 
-        # embed predicate_ids
-        self.embedding2 = layers.Embedding(2, 100)  # this is how He et al. did it
+        # encode
+        self.lstms = [layers.LSTM(params.hidden_size,
+                                  return_sequences=True,
+                                  go_backwards=bool(i % 2))
+                      for i in range(params.num_layers)]
 
-        # TODO missing control gates + orthonormal init of all weight matrices in LSTM
-
-        # He et al., 2017 used recurrent dropout but this prevents using cudnn and takes 10 times longer
-
-        self.lstm1 = layers.LSTM(params.hidden_size, return_sequences=True)
-        self.lstm2 = layers.LSTM(params.hidden_size, return_sequences=True,
-                                 go_backwards=True)
-        self.lstm3 = layers.LSTM(params.hidden_size, return_sequences=True)
-        self.lstm4 = layers.LSTM(params.hidden_size, return_sequences=True,
-                                 go_backwards=True)
-        # self.lstm5 = layers.LSTM(params.hidden_size, return_sequences=True)
-        # self.lstm6 = layers.LSTM(params.hidden_size, return_sequences=True,
-        #                          go_backwards=True)
-        # self.lstm7 = layers.LSTM(params.hidden_size, return_sequences=True)
-        # self.lstm8 = layers.LSTM(params.hidden_size, return_sequences=True,
-        #                          go_backwards=True)
-
+        # output
         self.dense_output = layers.Dense(self.num_classes, activation='softmax')
+
+        # TODO missing:
+        #  * control gates
+        #  * orthonormal init of all weight matrices in LSTM
+        #  * recurrent dropout but this prevents using cudnn and therefore takes 10 times longer
 
     def __call__(self, *args, **kwargs):
         """
@@ -120,23 +117,21 @@ class TensorflowSRLModel(tf.keras.Model):
 
         # embed
         embedded1 = self.embedding1(x1_b)
-        embedded2 = self.embedding1(x2_b)  # returns one of two trainable vectors of length 100
-
-        # encoding
-        encoded0 = tf.concat([embedded1, embedded2], axis=2)  # [batch_size, max_seq_len, embed_size + 100]
-
+        embedded2 = self.embedding1(x2_b)  # returns one of two trainable vectors of length params.binary_feature_dim
         mask = self.embedding1.compute_mask(x1_b)
-        encoded1 = self.lstm1(encoded0, mask=mask, training=training)
-        encoded2 = self.lstm2(encoded1, mask=mask, training=training)
-        encoded3 = self.lstm3(encoded1 + encoded2, mask=mask, training=training)
-        encoded4 = self.lstm4(encoded2 + encoded3, mask=mask, training=training)
-        # encoded5 = self.lstm5(encoded3 + encoded4, mask=mask, training=training)
-        # encoded6 = self.lstm6(encoded4 + encoded5, mask=mask, training=training)
-        # encoded7 = self.lstm7(encoded5 + encoded6, mask=mask, training=training)
-        # encoded8 = self.lstm8(encoded6 + encoded7, mask=mask, training=training)
-        # returns [batch_size, max_seq_len, hidden_size]
 
-        encoded_2d = tf.reshape(encoded3 + encoded4, [-1, self.params.hidden_size])
+        # encode
+        encoded_lm0 = tf.concat([embedded1, embedded2], axis=2)  # [batch_size, max_seq_len, embed_size + feature dim]
+        encoded_lm1 = None  # encoding at layer minus 1
+        for layer, lstm in enumerate(self.lstms):
+            encoded_lm2 = encoded_lm1  # in current layer (loop), what was previously 1 layer back is now 2 layers back
+            encoded_lm1 = encoded_lm0  # in current layer (loop), what was previously 0 layer back is now 1 layers back
+            if encoded_lm2 is None or tf.shape(encoded_lm2)[2] != self.params.hidden_size:
+                encoded_lm2 = 0  # in layer 1 and 2, there should be no contribution from previous layers
+            encoded_lm0 = lstm(encoded_lm1 + encoded_lm2, mask=mask, training=training)
+
+        # output projection
+        encoded_2d = tf.reshape(encoded_lm0 + encoded_lm1, [-1, self.params.hidden_size])
         softmax_2d = self.dense_output(encoded_2d)  # [num_words_in_batch, num_labels]
         softmax_3d = np.reshape(softmax_2d, (*np.shape(x1_b), self.num_classes))  # 1st dim is batch_size
 
@@ -154,7 +149,7 @@ class TensorflowSRLModel(tf.keras.Model):
             output_dict = self(**batch)
             y_true = y_b.reshape([-1])  # a tag for each word
             y_pred = output_dict['softmax_2d']  # a probability distribution for each word
-            loss = masked_sparse_categorical_crossentropy(y_true=y_true, y_pred=y_pred)
+            loss = masked_sparse_categorical_crossentropy(y_true=y_true, y_pred=y_pred, mask_value=self.padding_id)
 
         grads = tape.gradient(loss, self.trainable_weights)
         optimizer.apply_gradients(zip(grads, self.trainable_weights))
@@ -322,11 +317,6 @@ class AllenSRLModel(Model):
                                  batch_conll_gold_tags)
             output_dict["loss"] = loss
 
-        words, verbs = zip(*[(x["words"], x["verb"]) for x in metadata])
-        if metadata is not None:
-            output_dict["words"] = list(words)
-            output_dict["verb"] = list(verbs)
-
         # added by ph
         output_dict['softmax_3d'] = class_probabilities.detach().cpu().numpy()
         return output_dict
@@ -345,7 +335,7 @@ class AllenSRLModel(Model):
             predictions_list = [all_predictions]
         all_tags = []
 
-        # transition matrices contain only ones (and no -inf, which would signal illegal transition)
+        # ph: transition matrices contain only ones (and no -inf, which would signal illegal transition)
         all_labels = self.vocab.get_index_to_token_vocabulary("labels")
         num_labels = len(all_labels)
         transition_matrix = torch.zeros([num_labels, num_labels])
@@ -395,6 +385,15 @@ class AllenSRLModel(Model):
         optimizer.step()
 
         return loss
+
+    @staticmethod
+    def handle_metadata(metadata):
+        """
+        added by ph.
+        moved below code from self.forward() here because it was not used there
+        """
+        words, verbs = zip(*[(x["words"], x["verb"]) for x in metadata])
+        return list(words), list(verbs)
 
 
 def make_model_and_optimizer(params, vocab, glove_path):

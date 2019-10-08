@@ -34,7 +34,7 @@ class Params:
             raise AttributeError('No such attribute')
 
     def __str__(self):
-        res = ''
+        res = '\nParams:'
         for k, v in sorted(self.param2val.items()):
             res += '{}={}\n'.format(k, v)
         return res

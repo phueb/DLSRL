@@ -1,5 +1,4 @@
 
-
 param2default = {
     # defaults as defined by He et al., 2017
     'batch_size': 128,  # actually 90
@@ -23,6 +22,11 @@ param2debug = {'max_epochs': 500,
                }
 
 param2requests = {
-    'my_implementation': [False],
+    'my_implementation': [True],
     'max_epochs': [50]
 }
+
+if 'nun_layers' in param2requests:
+    for num_layers in param2requests['num_layers']:
+        assert num_layers % 2 == 0  # because of bi-directional organization
+        assert num_layers >= 2
