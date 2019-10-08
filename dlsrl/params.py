@@ -1,7 +1,7 @@
 
-# defaults as defined by He et al., 2017
+
 param2default = {
-    'max_sentence_length': 128,  # reduces padding and speeds training  - max is 116 (WSJ dev)
+    # defaults as defined by He et al., 2017
     'batch_size': 128,  # actually 90
     'num_layers': 8,
     'hidden_size': 256,  # actually, 300
@@ -9,6 +9,10 @@ param2default = {
     'max_epochs': 500,
     'learning_rate': 0.95,
     'epsilon': 1e-6,
+    'binary_feature_dim': 100,
+
+    # params not relevant to He et al, 2017
+    'max_sentence_length': 128,  # reduces padding and speeds training  - max is 116 (WSJ dev)
     'glove': True,
     'my_implementation': False
 }
@@ -19,6 +23,6 @@ param2debug = {'max_epochs': 500,
                }
 
 param2requests = {
-    'my_implementation': [True, False],
-    'max_epochs': [10, 50, 100, 200, 500]
+    'my_implementation': [False],
+    'max_epochs': [50]
 }

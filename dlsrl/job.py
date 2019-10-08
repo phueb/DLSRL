@@ -10,7 +10,6 @@ import pandas as pd
 import torch
 
 from allennlp.data.vocabulary import Vocabulary
-from allennlp.training import util as training_util
 from allennlp.data.iterators import BucketIterator
 
 
@@ -43,23 +42,16 @@ class Params:
         return res
 
 
-def masked_sparse_categorical_crossentropy(y_true, y_pred, mask_value=0):
-    mask_value = tf.Variable(mask_value)
-    mask = tf.equal(y_true, mask_value)
-    mask = 1 - tf.cast(mask, tf.float32)
-
-    # multiply categorical_crossentropy with the mask  (no reduce_sum operation is performed)
-    _loss = tf.keras.losses.sparse_categorical_crossentropy(y_true, y_pred) * mask
-
-    # take average w.r.t. the number of unmasked entries
-    return tf.math.reduce_sum(_loss) / tf.math.reduce_sum(mask)
-
-
 def main(param2val):
 
     if config.Global.local:
         print('WARNING: Loading data locally because config.Global.local=True')
         config.RemoteDirs = config.LocalDirs
+
+    if config.LocalDirs.glove.exists():
+        glove_path = config.LocalDirs.glove
+    else:
+        glove_path = config.RemoteDirs.glove
 
     # params
     params = Params(param2val)
@@ -82,7 +74,7 @@ def main(param2val):
 
     # model
     print('Building model...')
-    model = make_model(data, params, vocab)
+    model = make_model(params, vocab, glove_path)
 
     # optimizer
     if params.my_implementation:
@@ -117,20 +109,10 @@ def main(param2val):
                 print('WARNING: Batch size is {}. Skipping'.format(len(batch['tags'])))
                 continue
 
-            y_b = batch['tags'].cpu().numpy()
-            x1_b = batch['tokens']['tokens'].cpu().numpy()
-            x2_b = batch['verb_indicator'].cpu().numpy()
-
-            # to numpy
-            batch['tokens']['tokens'] = x1_b
-            batch['verb_indicator'] = x2_b
-            batch['tags'] = y_b
+            # get predictions
             batch['training'] = False
-
-            # get predictions (softmax_3d has shape [mb_size, max_sent_length, num_classes])
-            output_dict = model(**batch)
-            softmax_3d = np.reshape(output_dict['softmax_2d'],
-                                    (*np.shape(x1_b), model.num_classes))  # 1st dim is batch_
+            output_dict = model(**batch)  # input is dict[str, tensor]
+            softmax_3d = output_dict['softmax_3d']  # [mb_size, max_sent_length, num_labels]
 
             # get words and verb_indices
             sentences_b = []
@@ -140,6 +122,11 @@ def main(param2val):
                 verb_index = row['verb_index']
                 sentences_b.append(sentence)
                 verb_indices_b.append(verb_index)
+
+            # rename variables
+            y_b = batch['tags'].cpu().numpy()
+            x1_b = batch['tokens']['tokens'].cpu().numpy()
+            x2_b = batch['verb_indicator'].cpu().numpy()
 
             # get gold and predicted label IDs
             batch_pred_label_ids = np.argmax(softmax_3d, axis=2)  # [batch_size, seq_length]
@@ -192,25 +179,8 @@ def main(param2val):
         train_generator = bucket_batcher(data.train_instances, num_epochs=1)
         for step, batch in enumerate(train_generator):
 
-            y_b = batch['tags'].cpu().numpy()
-            x1_b = batch['tokens']['tokens'].cpu().numpy()
-            x2_b = batch['verb_indicator'].cpu().numpy()
-
-            # to numpy
-            batch['tokens']['tokens'] = x1_b
-            batch['verb_indicator'] = x2_b
-            batch['tags'] = y_b
             batch['training'] = True
-
-            # forward + loss
-            with tf.GradientTape() as tape:
-                output_dict = model(**batch)
-                y_true = y_b.reshape([-1])
-                y_pred = output_dict['softmax_2d']
-                loss = masked_sparse_categorical_crossentropy(y_true=y_true, y_pred=y_pred)
-
-            grads = tape.gradient(loss, model.trainable_weights)
-            optimizer.apply_gradients(zip(grads, model.trainable_weights))
+            loss = model.train_on_batch(batch, optimizer)
 
             if step % config.Eval.loss_interval == 0:
                 print('step {:<6}: loss={:2.2f} total minutes elapsed={:<3}'.format(
