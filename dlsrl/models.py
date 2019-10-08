@@ -375,7 +375,7 @@ class AllenSRLModel(Model):
 
     def train_on_batch(self, batch, optimizer):
         """
-        written by ph to keep interface betwen models consistent
+        written by ph to keep interface between models consistent
         """
         # to cuda
         batch['tokens']['tokens'] = batch['tokens']['tokens'].cuda()
@@ -397,21 +397,31 @@ class AllenSRLModel(Model):
         return loss
 
 
-def make_model(params, vocab, glove_path):
+def make_model_and_optimizer(params, vocab, glove_path):
     if params.my_implementation:
-        return make_tensorflow_model(params, vocab, glove_path)
+        model = make_tensorflow_model(params, vocab, glove_path)
+        optimizer = tf.optimizers.Adadelta(learning_rate=params.learning_rate,
+                                           epsilon=params.epsilon,
+                                           clipnorm=params.max_grad_norm)
     else:
-        return make_allen_model(params, vocab, glove_path)
+        model = make_allen_model(params, vocab, glove_path)
+        optimizer = torch.optim.Adadelta(params=model.parameters(),
+                                         lr=params.learning_rate,
+                                         eps=params.epsilon)
+
+    return model, optimizer
 
 
 def make_allen_model(params, vocab, glove_path):
     # parameters for original model are specified here:
     # https://github.com/allenai/allennlp/blob/master/training_config/semantic_role_labeler.jsonnet
 
+    glove_size = 100
+
     # encoder
     encoder_params = AllenParams(
         {'type': 'alternating_lstm',
-         'input_size': 200,  # this is glove size + binary feature embedding size = 200
+         'input_size': glove_size + params.binary_feature_dim,
          'hidden_size': params.hidden_size,
          'num_layers': params.num_layers,
          'use_highway': True,
@@ -423,7 +433,7 @@ def make_allen_model(params, vocab, glove_path):
         "token_embedders": {
             "tokens": {
                 "type": "embedding",
-                "embedding_dim": 100,  # must match glove dimension
+                "embedding_dim": glove_size,  # must match glove dimension
                 "pretrained_file": str(glove_path),
                 "trainable": True
             }
@@ -482,8 +492,7 @@ def make_tensorflow_model(params, vocab, glove_path):
 
     print('Found {}/{} GloVe embeddings'.format(num_found, num_words))
     # if this number is extremely low, then it is likely that Glove txt file was only
-    # partially copied to shared drive (copying should be performed in CL, not via nautilus)
+    # partially copied to shared drive (copying should be performed in terminal, not in GUI)
 
-    # model
     model = TensorflowSRLModel(embeddings, params, vocab)
     return model
