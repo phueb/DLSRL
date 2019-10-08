@@ -1,6 +1,4 @@
-from collections import OrderedDict
 import numpy as np
-import pandas as pd
 from typing import Iterator, List, Dict, Any
 
 from allennlp.data.token_indexers import SingleIdTokenIndexer
@@ -15,90 +13,32 @@ from dlsrl import config
 class Data:
 
     def __init__(self, params):
+        """
+        loads propositions from file and puts them in Allen NLP toolkit instances format
+        """
+
         self.params = params
 
-        # ----------------------------------------------------------- words & labels
-
-        self._word_set = set()  # holds words from both train and dev
-        self._label_set = set()  # holds labels from both train and dev
-
+        # load propositions
         self.train_propositions = self.get_propositions_from_file(config.RemoteDirs.train_data)
         self.dev_propositions = self.get_propositions_from_file(config.RemoteDirs.dev_data)
 
-        self._sorted_words = sorted(self._word_set)
-        self._sorted_labels = sorted(self._label_set)
-
-        self._sorted_words = [config.Data.pad_word, config.Data.unk_word] + self._sorted_words  # pad must have id=0
-        self._sorted_labels = [config.Data.pad_label] + self._sorted_labels
-
-        self.w2id = OrderedDict()  # word -> ID
-        for n, w in enumerate(self._sorted_words):
-            if w in self.w2id:
-                raise SystemError('Trying to add word to w2id, but word is already in w2id')
-            self.w2id[w] = n
-
-        self.l2id = OrderedDict()  # label -> ID
-        for n, l in enumerate(self._sorted_labels):
-            if l in self.l2id:
-                print('"{}" is already in l2id. Skipping'.format(l))
-                continue  # the letter "O" should be assigned id=0 instead of last id
-                # (this prevents overwriting existing entry with one pointing to the last id)
-            self.l2id[l] = n
-            if config.Data.verbose:
-                print('"{:<12}" -> {:<4}'.format(l, n))
-
-        assert len(self.w2id) == self.num_words
-
-        # -------------------------------------------------------- console
-
-        print('/////////////////////////////')
+        # print info
         print('Found {:,} training propositions ...'.format(self.num_train_propositions))
         print('Found {:,} dev propositions ...'.format(self.num_dev_propositions))
-        print("Extracted {:,} train+dev words".format(self.num_words))
-
+        print()
         for name, propositions in zip(['train', 'dev'],
                                       [self.train_propositions, self.dev_propositions]):
             lengths = [len(p[0]) for p in propositions]
             print("Max {} sentence length: {}".format(name, np.max(lengths)))
             print("Mean {} sentence length: {}".format(name, np.mean(lengths)))
             print("Median {} sentence length: {}".format(name, np.median(lengths)))
-        print('/////////////////////////////')
-
-        # -------------------------------------------------------- embeddings
-
-        if config.LocalDirs.glove.exists():
-            self.glove_path = config.LocalDirs.glove
-        else:
-            self.glove_path = config.RemoteDirs.glove
-
-        self.embeddings = self.make_embeddings()
-
-        # -------------------------------------------------------- prepare data structures for training
-
-        # training with vanilla tensorflow
-        self.train = self.to_ids(self.train_propositions)
-        self.dev = self.to_ids(self.dev_propositions)
+            print()
 
         # training with Allen NLP toolkit
         self.token_indexers = {'tokens': SingleIdTokenIndexer()}
         self.train_instances = self.make_instances(self.train_propositions)
         self.dev_instances = self.make_instances(self.dev_propositions)
-
-    @property
-    def sorted_words(self):
-        raise RuntimeError('Use allennlp.vocab to convert between words and IDs')
-
-    @property
-    def sorted_labels(self):
-        raise RuntimeError('Use allennlp.vocab to convert between words and IDs')
-
-    @property
-    def num_labels(self):
-        raise RuntimeError('Use allennlp.vocab')
-
-    @property
-    def num_words(self):
-        return len(self._sorted_words)
 
     @property
     def num_train_propositions(self):
@@ -140,80 +80,22 @@ class Data:
                 if len(words) > self.params.max_sentence_length:
                     continue
 
-                self._word_set.update(words)
-                self._label_set.update(labels)
-
                 propositions.append((words, predicate_pos, labels))
 
         return propositions
 
-    # ---------------------------------------------------------- embeddings
+    # --------------------------------------------------------- interface with Allen NLP toolkit
 
-    def make_embeddings(self):
-
-        assert len(self._word_set) > 0
-
-        if self.params.glove:
-            print('Loading word embeddings from {}'.format(self.glove_path))
-            df = pd.read_csv(self.glove_path, sep=" ", quoting=3, header=None, index_col=0)
-            w2embed = {key: val.values for key, val in df.T.items()}
-            embedding_size = next(iter(w2embed.items()))[1].shape[0]
-        else:
-            print('WARNING: Not loading GloVe embeddings')
-            w2embed = {}
-            embedding_size = 28
-
-        print('Glove embedding size={}'.format(embedding_size))
-        print('Num embeddings in GloVe file: {}'.format(len(w2embed)))
-
-        # get embeddings for words in vocabulary
-        res = np.zeros((self.num_words, embedding_size), dtype=np.float32)
-        num_found = 0
-        for w, row_id in self.w2id.items():
-            try:
-                word_embedding = w2embed[w]
-            except KeyError:
-                res[row_id] = np.random.standard_normal(embedding_size)
-            else:
-                res[row_id] = word_embedding
-                num_found += 1
-
-        print('Found {}/{} GloVe embeddings'.format(num_found, self.num_words))
-        # if this number is extremely low, then it is likely that Glove txt file was only
-        # partially copied to shared drive (copying should be performed in CL, not via nautilus)
-
-        return res
-
-    # --------------------------------------------------------- data structures for training a model
-
-    def make_predicate_ids(self, proposition):
+    @staticmethod
+    def make_predicate_one_hot(proposition):
         """
-
+        return a one-hot list where hot value marks verb
         :param proposition: a tuple with structure (words, predicate, labels)
         :return: one-hot list, [sentence length]
         """
         num_w_in_proposition = len(proposition[0])
         res = [int(i == proposition[1]) for i in range(num_w_in_proposition)]
         return res
-
-    def to_ids(self, propositions):
-        """
-
-        :param propositions: a tuple with structure (words, predicate, labels)
-        :return: 3 lists, each of the same length, containing lists of integers
-        """
-
-        word_ids = []
-        predicate_ids = []
-        label_ids = []
-        for proposition in propositions:
-            word_ids.append([self.w2id[w] for w in proposition[0]])
-            predicate_ids.append(self.make_predicate_ids(proposition))
-            label_ids.append([self.l2id[l] for l in proposition[2]])
-
-        return word_ids, predicate_ids, label_ids
-
-    # ------------------------------------------------------ interface with Allen NLP toolkit
 
     def _text_to_instance(self, tokens: List[Token],
                           verb_label: List[int],
@@ -256,18 +138,14 @@ class Data:
         roughly equivalent to Allen NLP toolkit dataset.read()
 
         """
-
         res = []
         for proposition in propositions:
             words = proposition[0]
-            predicate_pos = proposition[1]
+            predicate_one_hot = self.make_predicate_one_hot(proposition)
             tags = proposition[2]
-
-            predicate_ids = self.make_predicate_ids(proposition)
-
+            # to instance
             instance = self._text_to_instance([Token(word) for word in words],
-                                              predicate_ids,
+                                              predicate_one_hot,
                                               tags)
             res.append(instance)
-
         return res

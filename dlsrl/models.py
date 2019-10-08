@@ -1,5 +1,7 @@
 from typing import Dict, List, Any, Optional
+
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 import torch
 from allennlp.common import Params as AllenParams
@@ -9,8 +11,11 @@ from allennlp.models import Model
 from allennlp.models.srl_util import convert_bio_tags_to_conll_format
 from allennlp.modules import TextFieldEmbedder, Seq2SeqEncoder, Embedding, TimeDistributed
 from allennlp.nn import InitializerApplicator, RegularizerApplicator
-from allennlp.nn.util import get_text_field_mask, sequence_cross_entropy_with_logits, \
-    get_lengths_from_binary_sequence_mask, viterbi_decode
+from allennlp.nn.util import get_text_field_mask
+from allennlp.nn.util import sequence_cross_entropy_with_logits
+from allennlp.nn.util import get_lengths_from_binary_sequence_mask
+from allennlp.nn.util import viterbi_decode
+from allennlp.training.util import rescale_gradients
 from overrides import overrides
 from tensorflow.keras import layers
 from torch.nn import Linear, Dropout, functional as F
@@ -19,28 +24,46 @@ from dlsrl import config
 from dlsrl.scorer import SrlEvalScorer
 
 
-class TensorflowSRLModel(tf.keras.Model):
+def masked_sparse_categorical_crossentropy(y_true, y_pred, mask_value=0):
+    mask_value = tf.Variable(mask_value)
+    mask = tf.equal(y_true, mask_value)
+    mask = 1 - tf.cast(mask, tf.float32)
 
-    def __init__(self,  data, params, vocab, **kwargs):
+    # multiply categorical_crossentropy with the mask  (no reduce_sum operation is performed)
+    _loss = tf.keras.losses.sparse_categorical_crossentropy(y_true, y_pred) * mask
+
+    # take average w.r.t. the number of unmasked entries
+    return tf.math.reduce_sum(_loss) / tf.math.reduce_sum(mask)
+
+
+class TensorflowSRLModel(tf.keras.Model):
+    """
+
+    an incomplete tensorflow-based implementation of the Deep SRL model (described in He et al., 2017)
+
+    """
+
+    def __init__(self, embeddings, params, vocab, **kwargs):
         super(TensorflowSRLModel, self).__init__(name='deep_lstm', **kwargs)
 
         self.num_classes = vocab.get_vocab_size("labels")
+        self.params = params
+        vocab_size, embed_size = embeddings.shape
 
         print('Initializing keras model with in size = {} and out size = {}'.format(
-            len(data.embeddings), self.num_classes))
+            vocab_size, self.num_classes))
 
-        self.params = params
-        vocab_size, embed_size = data.embeddings.shape
+        # ---------------------- define feed-forward ops
 
         # embed word_ids
         self.embedding1 = layers.Embedding(vocab_size, embed_size,
-                                           embeddings_initializer=tf.keras.initializers.constant(data.embeddings),
-                                           mask_zero=True)  # TODO test mask_zero
+                                           embeddings_initializer=tf.keras.initializers.constant(embeddings),
+                                           mask_zero=True)
 
         # embed predicate_ids
-        self.embedding2 = layers.Embedding(2, 100)  # TODO test - this is how He et al. did it
+        self.embedding2 = layers.Embedding(2, 100)  # this is how He et al. did it
 
-        # TODO control gates + orthonormal init of all weight matrices in LSTM
+        # TODO missing control gates + orthonormal init of all weight matrices in LSTM
 
         # He et al., 2017 used recurrent dropout but this prevents using cudnn and takes 10 times longer
 
@@ -61,28 +84,29 @@ class TensorflowSRLModel(tf.keras.Model):
 
     def __call__(self, *args, **kwargs):
         """
-        to keep interface consistent with torch:
+        to keep interface consistent between models.
+        mimic torch syntax for a forward pass which looks like:
         output_dict = model(**batch)
         """
         return self.call(*args, **kwargs)
 
     def eval(self):
         """
-        to keep interface consistent with torch:
+        to keep interface consistent between models
         """
         pass
 
     def train(self):
         """
-        to keep interface consistent with torch
+        to keep interface consistent between models
         """
         pass
 
     def call(self,  # type: ignore
-             tokens: Dict[str, np.ndarray],
-             verb_indicator: np.ndarray,
-             training: bool,
-             tags: np.ndarray = None,
+             tokens: Dict[str, torch.LongTensor],
+             verb_indicator: torch.LongTensor,
+             training: bool = False,
+             tags: torch.LongTensor = None,
              metadata: List[Dict[str, Any]] = None) -> Dict[str, np.ndarray]:
         """
         x2_b is an array where each row is a one hot vector,
@@ -90,16 +114,16 @@ class TensorflowSRLModel(tf.keras.Model):
         this means x2_b should be embedded, retrieving either a vector with a single 1 or single 0.
         """
 
-        x1_b = tokens['tokens']
-        x2_b = verb_indicator
+        # convert torch tensor to numpy
+        x1_b = tokens['tokens'].numpy()
+        x2_b = verb_indicator.numpy()
 
         # embed
         embedded1 = self.embedding1(x1_b)
         embedded2 = self.embedding1(x2_b)  # returns one of two trainable vectors of length 100
 
         # encoding
-        encoded0 = tf.concat([embedded1, embedded2], axis=2)
-        # returns [batch_size, max_seq_len, embed_size + 100]
+        encoded0 = tf.concat([embedded1, embedded2], axis=2)  # [batch_size, max_seq_len, embed_size + 100]
 
         mask = self.embedding1.compute_mask(x1_b)
         encoded1 = self.lstm1(encoded0, mask=mask, training=training)
@@ -113,11 +137,29 @@ class TensorflowSRLModel(tf.keras.Model):
         # returns [batch_size, max_seq_len, hidden_size]
 
         encoded_2d = tf.reshape(encoded3 + encoded4, [-1, self.params.hidden_size])
-        softmax_2d = self.dense_output(encoded_2d)
-        # returns [num_words_in_batch, num_labels]
+        softmax_2d = self.dense_output(encoded_2d)  # [num_words_in_batch, num_labels]
+        softmax_3d = np.reshape(softmax_2d, (*np.shape(x1_b), self.num_classes))  # 1st dim is batch_size
 
-        output_dict = {'softmax_2d': softmax_2d}
+        output_dict = {'softmax_2d': softmax_2d,
+                       'softmax_3d': softmax_3d}
         return output_dict
+
+    def train_on_batch(self, batch, optimizer):
+
+        # to numpy
+        y_b = batch['tags'].numpy()
+
+        # forward + loss
+        with tf.GradientTape() as tape:
+            output_dict = self(**batch)
+            y_true = y_b.reshape([-1])  # a tag for each word
+            y_pred = output_dict['softmax_2d']  # a probability distribution for each word
+            loss = masked_sparse_categorical_crossentropy(y_true=y_true, y_pred=y_pred)
+
+        grads = tape.gradient(loss, self.trainable_weights)
+        optimizer.apply_gradients(zip(grads, self.trainable_weights))
+
+        return loss
 
 
 class AllenSRLModel(Model):
@@ -156,6 +198,7 @@ class AllenSRLModel(Model):
     ignore_span_metric: ``bool``, optional (default = False)
         Whether to calculate span loss, which is irrelevant when predicting BIO for Open Information Extraction.
     """
+
     def __init__(self, vocab: Vocabulary,
                  text_field_embedder: TextFieldEmbedder,
                  encoder: Seq2SeqEncoder,
@@ -191,8 +234,8 @@ class AllenSRLModel(Model):
                 tokens: Dict[str, torch.LongTensor],
                 verb_indicator: torch.LongTensor,
                 tags: torch.LongTensor = None,
+                training: bool = False,  # added by ph to make function consistent with other model
                 metadata: List[Dict[str, Any]] = None) -> Dict[str, torch.Tensor]:
-        # pylint: disable=arguments-differ
         """
         Parameters
         ----------
@@ -215,6 +258,7 @@ class AllenSRLModel(Model):
         metadata : ``List[Dict[str, Any]]``, optional, (default = None)
             metadata containing the original words in the sentence and the verb to compute the
             frame for, under 'words' and 'verb' keys, respectively.
+        training : added by ph to make function consistent with other model - does nothing
 
         Returns
         -------
@@ -229,6 +273,13 @@ class AllenSRLModel(Model):
             A scalar loss to be optimised.
 
         """
+
+        # added by ph
+        tokens['tokens'] = tokens['tokens'].cuda()
+        verb_indicator = verb_indicator.cuda()
+        if tags is not None:
+            tags = tags.cuda()
+
         embedded_text_input = self.embedding_dropout(self.text_field_embedder(tokens))
         mask = get_text_field_mask(tokens)
         embedded_verb_indicator = self.binary_feature_embedding(verb_indicator.long())
@@ -275,12 +326,15 @@ class AllenSRLModel(Model):
         if metadata is not None:
             output_dict["words"] = list(words)
             output_dict["verb"] = list(verbs)
+
+        # added by ph
+        output_dict['softmax_3d'] = class_probabilities.detach().cpu().numpy()
         return output_dict
 
     @overrides
     def decode(self, output_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """
-        Do NOT perform Viterbi decoding.
+        ph: Do NOT perform Viterbi decoding - we are interested in learning dynamics, not best performance
         """
         all_predictions = output_dict['class_probabilities']
         sequence_lengths = get_lengths_from_binary_sequence_mask(output_dict["mask"]).data.tolist()
@@ -319,15 +373,38 @@ class AllenSRLModel(Model):
             # we only really care about the overall metrics, so we filter for them here.
             return {x: y for x, y in metric_dict.items() if "overall" in x}
 
+    def train_on_batch(self, batch, optimizer):
+        """
+        written by ph to keep interface betwen models consistent
+        """
+        # to cuda
+        batch['tokens']['tokens'] = batch['tokens']['tokens'].cuda()
+        batch['verb_indicator'] = batch['verb_indicator'].cuda()
+        batch['tags'] = batch['tags'].cuda()
 
-def make_model(data, params, vocab):
+        # forward + loss
+        optimizer.zero_grad()
+        output_dict = self(**batch)  # input is dict[str, tensor]
+        loss = output_dict["loss"] + self.get_regularization_penalty()
+        if torch.isnan(loss):
+            raise ValueError("nan loss encountered")
+
+        # backward + update
+        loss.backward()
+        rescale_gradients(self, self.params.max_grad_norm)
+        optimizer.step()
+
+        return loss
+
+
+def make_model(params, vocab, glove_path):
     if params.my_implementation:
-        return TensorflowSRLModel(data, params, vocab)
+        return make_tensorflow_model(params, vocab, glove_path)
     else:
-        return make_allen_model(data, params, vocab)
+        return make_allen_model(params, vocab, glove_path)
 
 
-def make_allen_model(data, params, vocab):
+def make_allen_model(params, vocab, glove_path):
     # parameters for original model are specified here:
     # https://github.com/allenai/allennlp/blob/master/training_config/semantic_role_labeler.jsonnet
 
@@ -347,7 +424,7 @@ def make_allen_model(data, params, vocab):
             "tokens": {
                 "type": "embedding",
                 "embedding_dim": 100,  # must match glove dimension
-                "pretrained_file": str(data.glove_path),
+                "pretrained_file": str(glove_path),
                 "trainable": True
             }
         }
@@ -366,11 +443,47 @@ def make_allen_model(data, params, vocab):
                           text_field_embedder=text_field_embedder,
                           encoder=encoder,
                           initializer=initializer,
-                          binary_feature_dim=100,
-                          ignore_span_metric=config.Eval.ignore_span_metric)  # TODO test
+                          binary_feature_dim=params.binary_feature_dim,
+                          ignore_span_metric=config.Eval.ignore_span_metric)
     model.cuda()
+    model.params = params
+    return model
 
-    from allennlp.common.checks import check_for_gpu
-    check_for_gpu(device_id=0)
 
+def make_tensorflow_model(params, vocab, glove_path):
+
+    if params.glove:
+        print('Loading word embeddings from {}'.format(glove_path))
+        df = pd.read_csv(glove_path, sep=" ", quoting=3, header=None, index_col=0)
+        w2embed = {key: val.values for key, val in df.T.items()}
+        embedding_size = next(iter(w2embed.items()))[1].shape[0]
+        print('Glove embedding size={}'.format(embedding_size))
+        print('Num embeddings in GloVe file: {}'.format(len(w2embed)))
+    else:
+        print('WARNING: Not loading GloVe embeddings')
+        w2embed = {}
+        embedding_size = params.binary_feature_dim
+
+    # get info from Allen NLP vocab
+    num_words = vocab.get_vocab_size('tokens')
+    w2id = vocab.get_token_to_index_vocabulary('tokens')
+
+    # assign embeddings
+    embeddings = np.zeros((num_words, embedding_size), dtype=np.float32)
+    num_found = 0
+    for w, row_id in w2id.items():
+        try:
+            word_embedding = w2embed[w]
+        except KeyError:
+            embeddings[row_id] = np.random.standard_normal(embedding_size)
+        else:
+            embeddings[row_id] = word_embedding
+            num_found += 1
+
+    print('Found {}/{} GloVe embeddings'.format(num_found, num_words))
+    # if this number is extremely low, then it is likely that Glove txt file was only
+    # partially copied to shared drive (copying should be performed in CL, not via nautilus)
+
+    # model
+    model = TensorflowSRLModel(embeddings, params, vocab)
     return model
