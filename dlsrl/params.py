@@ -13,7 +13,7 @@ param2default = {
     # params not relevant to He et al, 2017
     'max_sentence_length': 128,  # reduces padding and speeds training  - max is 116 (WSJ dev)
     'glove': True,
-    'my_implementation': False
+    'model': 0  # 0 is my implementation, 1 is He et al., 2017, 2 is new Bert-based SRL model
 }
 
 # used to overwrite parameters when --debug flag is on (when calling "ludwig-local")
@@ -22,7 +22,7 @@ param2debug = {'max_epochs': 500,
                }
 
 param2requests = {
-    'my_implementation': [False],
+    'model': [0, 1, 2],
     'max_epochs': [50]
 }
 
@@ -30,3 +30,8 @@ if 'nun_layers' in param2requests:
     for num_layers in param2requests['num_layers']:
         assert num_layers % 2 == 0  # because of bi-directional organization
         assert num_layers >= 2
+
+
+for model in param2requests['model']:
+    if model not in [1, 2, 3]:
+        raise AttributeError('Invalid arg to model. Must be in [1, 2, 3]')

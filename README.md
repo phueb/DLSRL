@@ -31,7 +31,7 @@ in the Department of Psychology at [UIUC](https://psychology.illinois.edu/).
 The original model was ported to pytorch by Allen NLP and is made available via the Allen NLP toolkit.
 The Allen NLP implementation is included in this repository to accurately compare performance between it and the tensorflow-based implementation.
 
-To train the Allen NLP implementation, set `params.param2requests['my_implementation'] = [False]`
+To train the Allen NLP implementation, set `params.param2requests['model'] = 1`
 The F1 score on the development set for the first three epochs should be approximately:
 
 * epoch 0: ~ 0

@@ -50,10 +50,4 @@ class Data:
 
 class Eval:
     loss_interval = 100
-    summary_interval = 100
     verbose = True  # print output of perl evaluation script
-
-    ignore_span_metric = True  # TODO test
-
-
-
