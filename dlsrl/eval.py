@@ -4,7 +4,7 @@ from dlsrl.scorer_utils import convert_bio_tags_to_conll_format
 from dlsrl.scorer import SrlEvalScorer
 
 
-def evaluate_model_on_dev(model, params, data, vocab, bucket_batcher):
+def evaluate_model_on_f1(model, params, vocab, bucket_batcher, instances):
 
     # inits
     all_bio_pred_labels = []  # no padding allowed
@@ -13,8 +13,8 @@ def evaluate_model_on_dev(model, params, data, vocab, bucket_batcher):
     all_sentences = []
 
     model.eval()
-    dev_generator = bucket_batcher(data.dev_instances, num_epochs=1)
-    for step, batch in enumerate(dev_generator):
+    instances_generator = bucket_batcher(instances, num_epochs=1)
+    for step, batch in enumerate(instances_generator):
 
         if len(batch['tags']) != params.batch_size:
             print('WARNING: Batch size is {}. Skipping'.format(len(batch['tags'])))

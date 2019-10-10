@@ -12,7 +12,7 @@ from allennlp.data.iterators import BucketIterator
 
 
 from dlsrl.data import Data
-from dlsrl.eval import evaluate_model_on_dev
+from dlsrl.eval import evaluate_model_on_f1
 from dlsrl.models import make_model_and_optimizer
 from dlsrl import config
 
@@ -74,14 +74,18 @@ def main(param2val):
 
     # train + eval loop
     dev_f1s = []
+    train_f1s = []
     train_start = time.time()
     for epoch in range(params.max_epochs):
 
         print('\nEpoch: {}'.format(epoch))
 
-        # eval on dev propositions
-        dev_f1 = evaluate_model_on_dev(model, params, data, vocab, bucket_batcher)
+        # evaluate f1
+        dev_f1 = evaluate_model_on_f1(model, params, vocab, bucket_batcher, data.dev_instances)
+        train_f1 = evaluate_model_on_f1(model, params, vocab, bucket_batcher, data.train_instances)
         dev_f1s.append(dev_f1)
+        train_f1s.append(train_f1)
+        sys.stdout.flush()
 
         # train
         model.train()
@@ -95,7 +99,6 @@ def main(param2val):
                     step, loss, (time.time() - train_start) // 60))
 
     # to pandas
-    train_f1s = []  # TODO
     s1 = pd.Series(train_f1s, index=np.arange(params.max_epochs))
     s1.name = 'train_f1'
     s2 = pd.Series(dev_f1s, index=np.arange(params.max_epochs))
