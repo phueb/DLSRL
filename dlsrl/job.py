@@ -22,6 +22,15 @@ class Params:
     def __init__(self, param2val):
         param2val = param2val.copy()
 
+        if param2val['model'] == 3:
+            param2val = {
+                'param_name': param2val['param_name'],
+                'job_name': param2val['job_name'],
+                'model': 3,
+                'max_epochs': 15,  # BERT-based model needs only 15
+                'batch_size': 32,   # BERT-based model needs 32
+                'max_sentence_length': 48}  # otherwise error
+
         self.param_name = param2val.pop('param_name')
         self.job_name = param2val.pop('job_name')
 
@@ -34,7 +43,7 @@ class Params:
             raise AttributeError('No such attribute')
 
     def __str__(self):
-        res = '\nParams:'
+        res = '\nParams:\n'
         for k, v in sorted(self.param2val.items()):
             res += '{}={}\n'.format(k, v)
         return res
@@ -68,6 +77,7 @@ def main(param2val):
     vocab = Vocabulary.from_instances(data.train_instances + data.dev_instances)
     bucket_batcher = BucketIterator(batch_size=params.batch_size, sorting_keys=[('tokens', "num_tokens")])
     bucket_batcher.index_with(vocab)
+    print('Vocab size={:,}'.format(vocab.get_vocab_size('tokens')))
 
     # model + optimizer
     model, optimizer = make_model_and_optimizer(params, vocab, glove_path)

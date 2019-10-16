@@ -37,12 +37,11 @@ class Model3(Model):
                  embedding_dropout: float = 0.0,
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None,
-                 label_smoothing: float = None,
-                 ignore_span_metric: bool = False) -> None:
+                 label_smoothing: float = None) -> None:
         super(Model3, self).__init__(vocab, regularizer)
 
         if isinstance(bert_model, str):
-            self.bert_model = BertModel.from_pretrained(bert_model)
+            self.bert_model = BertModel.from_pretrained(bert_model)  # Ph; too big for a single  GTX 1080 Ti
         else:
             self.bert_model = bert_model
 
@@ -52,14 +51,14 @@ class Model3(Model):
 
         self.embedding_dropout = Dropout(p=embedding_dropout)
         self._label_smoothing = label_smoothing
-        self.ignore_span_metric = ignore_span_metric
         initializer(self)
 
     def forward(self,  # type: ignore
                 tokens: Dict[str, torch.Tensor],
                 verb_indicator: torch.Tensor,
-                metadata: List[Any],
-                tags: torch.LongTensor = None):
+                tags: torch.LongTensor = None,
+                training: bool = False,  # added by ph to make function consistent with other model
+                metadata: List[Any] = None) -> Dict[str, torch.Tensor]:
         # pylint: disable=arguments-differ
         """
         Parameters
@@ -79,6 +78,7 @@ class Model3(Model):
             metadata containg the original words in the sentence, the verb to compute the
             frame for, and start offsets for converting wordpieces back to a sequence of words,
             under 'words', 'verb' and 'offsets' keys, respectively.
+        training : added by ph to make function consistent with other model - does nothing
 
         Returns
         -------
@@ -92,6 +92,13 @@ class Model3(Model):
         loss : torch.FloatTensor, optional
             A scalar loss to be optimised.
         """
+
+        # added by ph
+        tokens['tokens'] = tokens['tokens'].cuda()
+        verb_indicator = verb_indicator.cuda()
+        if tags is not None:
+            tags = tags.cuda()
+
         mask = get_text_field_mask(tokens)
         bert_embeddings, _ = self.bert_model(input_ids=tokens["tokens"],
                                              token_type_ids=verb_indicator,
@@ -105,16 +112,10 @@ class Model3(Model):
         class_probabilities = F.softmax(reshaped_log_probs, dim=-1).view([batch_size,
                                                                           sequence_length,
                                                                           self.num_classes])
-        output_dict = {"logits": logits, "class_probabilities": class_probabilities}
+        output_dict = {"logits": logits, "class_probabilities": class_probabilities, "mask": mask}
         # We need to retain the mask in the output dictionary
         # so that we can crop the sequences to remove padding
         # when we do viterbi inference in self.decode.
-        output_dict["mask"] = mask
-        # We add in the offsets here so we can compute the un-wordpieced tags.
-        words, verbs, offsets = zip(*[(x["words"], x["verb"], x["offsets"]) for x in metadata])
-        output_dict["words"] = list(words)
-        output_dict["verb"] = list(verbs)
-        output_dict["wordpiece_offsets"] = list(offsets)
 
         if tags is not None:
             loss = sequence_cross_entropy_with_logits(logits,
@@ -122,6 +123,9 @@ class Model3(Model):
                                                       mask,
                                                       label_smoothing=self._label_smoothing)
             output_dict["loss"] = loss
+
+        # added by ph  # TODO these probabilities are over word-pieces - incorrect
+        output_dict['softmax_3d'] = class_probabilities.detach().cpu().numpy()
         return output_dict
 
     @overrides
@@ -136,21 +140,28 @@ class Model3(Model):
             predictions_list = [all_predictions[i].detach().cpu() for i in range(all_predictions.size(0))]
         else:
             predictions_list = [all_predictions]
-        all_tags = []
 
         # ph: transition matrices contain only ones (and no -inf, which would signal illegal transition)
+        wordpiece_tags = []
+        word_tags = []
         all_labels = self.vocab.get_index_to_token_vocabulary("labels")
         num_labels = len(all_labels)
         transition_matrix = torch.zeros([num_labels, num_labels])
         start_transitions = torch.zeros(num_labels)
 
-        for predictions, length in zip(predictions_list, sequence_lengths):
+        # We add in the offsets here so we can compute the un-wordpieced tags.
+        for predictions, length, offsets in zip(predictions_list,
+                                                sequence_lengths,
+                                                output_dict["wordpiece_offsets"]):
             max_likelihood_sequence, _ = viterbi_decode(predictions[:length], transition_matrix,
                                                         allowed_start_transitions=start_transitions)
             tags = [self.vocab.get_token_from_index(x, namespace="labels")
                     for x in max_likelihood_sequence]
-            all_tags.append(tags)
-        output_dict['tags'] = all_tags
+
+            wordpiece_tags.append(tags)
+            word_tags.append([tags[i] for i in offsets])
+        output_dict['wordpiece_tags'] = wordpiece_tags
+        output_dict['tags'] = word_tags
         return output_dict
 
     def train_on_batch(self, batch, optimizer):
@@ -158,7 +169,7 @@ class Model3(Model):
         written by ph to keep interface between models consistent
         """
         # to cuda
-        batch['tokens']['tokens'] = batch['tokens']['tokens'].cuda()  #TODO this might need some adapting due to bert
+        batch['tokens']['tokens'] = batch['tokens']['tokens'].cuda()
         batch['verb_indicator'] = batch['verb_indicator'].cuda()
         batch['tags'] = batch['tags'].cuda()
 
@@ -171,7 +182,17 @@ class Model3(Model):
 
         # backward + update
         loss.backward()
-        rescale_gradients(self, self.max_grad_norm)
+        rescale_gradients(self, grad_norm=1.0)
         optimizer.step()
 
         return loss
+
+    @staticmethod
+    def handle_metadata(metadata):
+        """
+        added by ph.
+        moved below code from self.forward() here because it was not used there
+        """
+        # We add in the offsets here so we can compute the un-wordpieced tags.
+        words, verbs, offsets = zip(*[(x["words"], x["verb"], x["offsets"]) for x in metadata])
+        return list(words), list(verbs), list(offsets)

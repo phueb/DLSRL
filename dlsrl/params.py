@@ -13,7 +13,7 @@ param2default = {
     # params not relevant to He et al, 2017
     'max_sentence_length': 128,  # reduces padding and speeds training  - max is 116 (WSJ dev)
     'glove': True,
-    'model': 0  # 0 is my implementation, 1 is He et al., 2017, 2 is new Bert-based SRL model
+    'model': 2  # 1 is my implementation, 2 is He et al., 2017, 3 is new Bert-based SRL model
 }
 
 # used to overwrite parameters when --debug flag is on (when calling "ludwig-local")
@@ -22,7 +22,7 @@ param2debug = {'max_epochs': 500,
                }
 
 param2requests = {
-    'model': [0, 1, 2],
+    'model': [3],
     'max_epochs': [50]
 }
 
