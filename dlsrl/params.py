@@ -26,6 +26,8 @@ param2requests = {
     'max_epochs': [50]
 }
 
+# TODO move BERT-model to separate project (after generating a figure comparing model 2 vs 3)
+
 if 'nun_layers' in param2requests:
     for num_layers in param2requests['num_layers']:
         assert num_layers % 2 == 0  # because of bi-directional organization

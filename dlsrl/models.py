@@ -105,9 +105,6 @@ def make_model3(vocab):
     # parameters  are specified here:
     # https://github.com/allenai/allennlp/blob/master/training_config/bert_base_srl.jsonnet
 
-    max_grad_norm = 1.0
-    embedding_dropout = 0.1
-
     # TODO the vocab probably needs to be changed ! (wordpieces)
 
     config = modeling.BertConfig(vocab_size_or_config_json_file=vocab.get_vocab_size('tokens'),  # was 32K
@@ -121,7 +118,7 @@ def make_model3(vocab):
     #  * learning rate scheduler - "slanted_triangular"
 
     # initializer
-    initializer_params = [  # TODO no custom initializer?
+    initializer_params = [
         ("",
          AllenParams({}))
     ]
@@ -131,7 +128,7 @@ def make_model3(vocab):
     model = Model3(vocab=vocab,
                    bert_model=bert_model,
                    initializer=initializer,
-                   embedding_dropout=embedding_dropout)
+                   embedding_dropout=0.1)
     model.cuda()
     return model
 

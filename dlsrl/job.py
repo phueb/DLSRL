@@ -27,9 +27,9 @@ class Params:
                 'param_name': param2val['param_name'],
                 'job_name': param2val['job_name'],
                 'model': 3,
-                'max_epochs': 15,  # BERT-based model needs only 15
+                'max_epochs': 50,  # BERT-based model needs only 15
                 'batch_size': 32,   # BERT-based model needs 32
-                'max_sentence_length': 48}  # otherwise error
+                'max_sentence_length': 128}
 
         self.param_name = param2val.pop('param_name')
         self.job_name = param2val.pop('job_name')
