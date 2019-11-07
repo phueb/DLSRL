@@ -64,6 +64,7 @@ def main(param2val):
     vocab = Vocabulary.from_instances(data.train_instances + data.dev_instances)
     bucket_batcher = BucketIterator(batch_size=params.batch_size, sorting_keys=[('tokens', "num_tokens")])
     bucket_batcher.index_with(vocab)
+    vocab.print_statistics()
     print('Vocab size={:,}'.format(vocab.get_vocab_size('tokens')))
 
     # model + optimizer

@@ -102,17 +102,14 @@ class Data:
         res = [int(i == proposition[1]) for i in range(num_w_in_proposition)]
         return res
 
-    def _text_to_instance(self, tokens: List[Token],
+    def _text_to_instance(self,
+                          tokens: List[Token],
                           verb_label: List[int],
                           tags: List[str] = None) -> Instance:
-        tokens_field = TextField(tokens, self.token_indexers)
-        verb_indicator = SequenceLabelField(labels=verb_label, sequence_field=tokens_field)
-        fields = {'tokens': tokens_field,
+        text_field = TextField(tokens, self.token_indexers)
+        verb_indicator = SequenceLabelField(verb_label, text_field)
+        fields = {'tokens': text_field,
                   'verb_indicator': verb_indicator}
-
-        if tags:
-            label_field = SequenceLabelField(labels=tags, sequence_field=tokens_field)
-            fields["tags"] = label_field
 
         # metadata
         metadata_dict: Dict[str, Any] = {}
@@ -128,7 +125,7 @@ class Data:
         metadata_dict["verb_index"] = verb_index
 
         if tags:
-            fields['tags'] = SequenceLabelField(tags, tokens_field)
+            fields['tags'] = SequenceLabelField(tags, text_field)
             metadata_dict["gold_tags"] = tags
 
         fields["metadata"] = MetadataField(metadata_dict)
