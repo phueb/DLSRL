@@ -1,10 +1,14 @@
-from typing import Dict
+"""
+Code obtained from Allen AI NLP toolkit in September 2019
+"""
 
+from typing import Optional, List, Dict
 import os
 import shutil
 import subprocess
 import tempfile
 from collections import defaultdict
+from pathlib import Path
 
 from dlsrl.scorer_utils import write_conll_formatted_tags_to_file
 from dlsrl import config
@@ -23,13 +27,10 @@ class SrlEvalScorer:
     ignore_classes : ``List[str]``, optional (default=``None``).
         A list of classes to ignore.
     """
-    def __init__(self, ignore_classes=None):
-
-        # added by ph
-        if config.LocalDirs.srl_eval_script.exists():
-            srl_eval_path = config.LocalDirs.srl_eval_script
-        else:
-            srl_eval_path = config.RemoteDirs.srl_eval_script
+    def __init__(self,
+                 srl_eval_path: Path,
+                 ignore_classes: Optional[List[str]] = None,
+                 ):
 
         self._srl_eval_path = str(srl_eval_path)  # The path to the srl-eval.pl script.
         self._ignore_classes = set(ignore_classes)
@@ -107,7 +108,8 @@ class SrlEvalScorer:
                 self._false_negatives[tag] += num_missed
         shutil.rmtree(tempdir)
 
-    def get_metric(self, reset: bool = False) -> Dict:
+    def get_metric(self, reset: bool = False,
+                   ) -> Dict[str, float]:
         """
         Returns
         -------

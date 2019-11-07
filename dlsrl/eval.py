@@ -4,7 +4,7 @@ from dlsrl.scorer_utils import convert_bio_tags_to_conll_format
 from dlsrl.scorer import SrlEvalScorer
 
 
-def evaluate_model_on_f1(model, params, vocab, bucket_batcher, instances):
+def evaluate_model_on_f1(model, params, srl_eval_path, vocab, bucket_batcher, instances):
 
     # inits
     all_bio_pred_labels = []  # no padding allowed
@@ -74,7 +74,7 @@ def evaluate_model_on_f1(model, params, vocab, bucket_batcher, instances):
 
     # SrlEvalScorer is taken from AllenAI NLP toolkit.
     # ignore_classes does not affect perl script, but affects f1 computed by Allen AI NLP toolkit
-    span_metric = SrlEvalScorer(ignore_classes=["V"])
+    span_metric = SrlEvalScorer(srl_eval_path, ignore_classes=["V"])
     span_metric(all_verb_indices,               # List[Optional[int]]
                 all_sentences,                  # List[List[str]]
                 all_conll_predicted_tags,       # List[List[str]]

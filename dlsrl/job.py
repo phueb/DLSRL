@@ -6,6 +6,8 @@ import time
 import sys
 import numpy as np
 import pandas as pd
+import attr
+from pathlib import Path
 
 from allennlp.data.vocabulary import Vocabulary
 from allennlp.data.iterators import BucketIterator
@@ -17,63 +19,48 @@ from dlsrl.models import make_model_and_optimizer
 from dlsrl import config
 
 
-class Params:
+@attr.s
+class Params(object):
+    batch_size = attr.ib(validator=attr.validators.instance_of(int))
+    num_layers = attr.ib(validator=attr.validators.instance_of(int))
+    hidden_size = attr.ib(validator=attr.validators.instance_of(int))
+    max_grad_norm = attr.ib(validator=attr.validators.instance_of(float))
+    num_epochs = attr.ib(validator=attr.validators.instance_of(int))
+    learning_rate = attr.ib(validator=attr.validators.instance_of(float))
+    epsilon = attr.ib(validator=attr.validators.instance_of(float))
+    binary_feature_dim = attr.ib(validator=attr.validators.instance_of(int))
+    max_sentence_length = attr.ib(validator=attr.validators.instance_of(int))
+    glove = attr.ib(validator=attr.validators.instance_of(bool))
+    model = attr.ib(validator=attr.validators.instance_of(int))
 
-    def __init__(self, param2val):
-        param2val = param2val.copy()
-
-        if param2val['model'] == 3:
-            param2val = {
-                'param_name': param2val['param_name'],
-                'job_name': param2val['job_name'],
-                'model': 3,
-                'max_epochs': 50,  # BERT-based model needs only 15
-                'batch_size': 32,   # BERT-based model needs 32
-                'max_sentence_length': 128}
-
-        self.param_name = param2val.pop('param_name')
-        self.job_name = param2val.pop('job_name')
-
-        self.param2val = param2val
-
-    def __getattr__(self, name):
-        if name in self.param2val:
-            return self.param2val[name]
-        else:
-            raise AttributeError('No such attribute')
-
-    def __str__(self):
-        res = '\nParams:\n'
-        for k, v in sorted(self.param2val.items()):
-            res += '{}={}\n'.format(k, v)
-        return res
+    @classmethod
+    def from_param2val(cls, param2val):
+        kwargs = {k: v for k, v in param2val.items()
+                  if k not in ['job_name', 'param_name', 'project_path', 'save_path']}
+        return cls(**kwargs)
 
 
 def main(param2val):
 
     # params
-    params = Params(param2val)
-    print(params)
-    sys.stdout.flush()
+    params = Params.from_param2val(param2val)
+    print(params, flush=True)
 
-    # make local folder for saving checkpoint + events files
-    local_job_p = config.LocalDirs.runs / params.job_name
-    if not local_job_p.exists():
-        local_job_p.mkdir(parents=True)
-
-    # if not run on Ludwig
-    if config.Global.local:
-        print('WARNING: Loading data locally because config.Global.local=True')
-        config.RemoteDirs = config.LocalDirs
+    #  paths
+    project_path = Path(param2val['project_path'])
+    srl_eval_path = project_path / 'perl' / 'srl-eval.pl'
+    train_data_path = project_path / 'data' / 'CONLL05/conll05.train.txt'
+    dev_data_path = project_path / 'data' / 'CONLL05/conll05.dev.txt'
+    test_data_path = project_path / 'data' / 'CONLL05/conll05.test.wsj.txt'
 
     # prefer loading glove embeddings from local machine, if they are present
     if config.LocalDirs.glove.exists():
         glove_path = config.LocalDirs.glove
     else:
-        glove_path = config.RemoteDirs.glove
+        glove_path = project_path / 'data' / config.LocalDirs.glove.name
 
     # data + vocab + batcher
-    data = Data(params)
+    data = Data(params, train_data_path, dev_data_path)
     vocab = Vocabulary.from_instances(data.train_instances + data.dev_instances)
     bucket_batcher = BucketIterator(batch_size=params.batch_size, sorting_keys=[('tokens', "num_tokens")])
     bucket_batcher.index_with(vocab)
@@ -86,13 +73,13 @@ def main(param2val):
     dev_f1s = []
     train_f1s = []
     train_start = time.time()
-    for epoch in range(params.max_epochs):
+    for epoch in range(params.num_epochs):
 
-        print('\nEpoch: {}'.format(epoch))
+        print(f'\nEpoch: {epoch}')
 
         # evaluate f1
-        dev_f1 = evaluate_model_on_f1(model, params, vocab, bucket_batcher, data.dev_instances)
-        train_f1 = evaluate_model_on_f1(model, params, vocab, bucket_batcher, data.train_instances)
+        dev_f1 = evaluate_model_on_f1(model, params, srl_eval_path,  vocab, bucket_batcher, data.dev_instances)
+        train_f1 = evaluate_model_on_f1(model, params, srl_eval_path, vocab, bucket_batcher, data.train_instances)
         dev_f1s.append(dev_f1)
         train_f1s.append(train_f1)
         sys.stdout.flush()
@@ -109,9 +96,9 @@ def main(param2val):
                     step, loss, (time.time() - train_start) // 60))
 
     # to pandas
-    s1 = pd.Series(train_f1s, index=np.arange(params.max_epochs))
+    s1 = pd.Series(train_f1s, index=np.arange(params.num_epochs))
     s1.name = 'train_f1'
-    s2 = pd.Series(dev_f1s, index=np.arange(params.max_epochs))
+    s2 = pd.Series(dev_f1s, index=np.arange(params.num_epochs))
     s2.name = 'dev_f1'
 
     return [s1, s2]

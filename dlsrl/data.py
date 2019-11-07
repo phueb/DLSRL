@@ -1,5 +1,6 @@
 import numpy as np
 from typing import Iterator, List, Dict, Any
+from pathlib import Path
 
 from allennlp.data.token_indexers import SingleIdTokenIndexer
 from allennlp.data.tokenizers import Token
@@ -12,7 +13,11 @@ from dlsrl import config
 
 class Data:
 
-    def __init__(self, params):
+    def __init__(self,
+                 params,
+                 train_data_path: Path,
+                 dev_data_path: Path,
+                 ):
         """
         loads propositions from file and puts them in Allen NLP toolkit instances format
         """
@@ -20,8 +25,8 @@ class Data:
         self.params = params
 
         # load propositions
-        self.train_propositions = self.get_propositions_from_file(config.RemoteDirs.train_data)
-        self.dev_propositions = self.get_propositions_from_file(config.RemoteDirs.dev_data)
+        self.train_propositions = self.get_propositions_from_file(train_data_path)
+        self.dev_propositions = self.get_propositions_from_file(dev_data_path)
 
         # print info
         print('Found {:,} training propositions ...'.format(self.num_train_propositions))

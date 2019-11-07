@@ -2,15 +2,13 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import torch
-import sys
-from pytorch_pretrained_bert import modeling, BertAdam
+
 from allennlp.common import Params as AllenParams
 from allennlp.modules import TextFieldEmbedder, Seq2SeqEncoder
 from allennlp.nn import InitializerApplicator
 
 from dlsrl.model1 import Model1
 from dlsrl.model2 import Model2
-from dlsrl.model3 import Model3
 
 
 def make_model1(params, vocab, glove_path):
@@ -101,59 +99,19 @@ def make_model2(params, vocab, glove_path):
     return model
 
 
-def make_model3(vocab):
-    # parameters  are specified here:
-    # https://github.com/allenai/allennlp/blob/master/training_config/bert_base_srl.jsonnet
-
-    # TODO the vocab probably needs to be changed ! (wordpieces)
-
-    config = modeling.BertConfig(vocab_size_or_config_json_file=vocab.get_vocab_size('tokens'),  # was 32K
-                                 hidden_size=252,  # was 768
-                                 num_hidden_layers=2,  # was 12
-                                 num_attention_heads=12,  # was 12
-                                 intermediate_size=3072)
-    bert_model = modeling.BertModel(config=config)
-
-    # TODO bert also needs
-    #  * learning rate scheduler - "slanted_triangular"
-
-    # initializer
-    initializer_params = [
-        ("",
-         AllenParams({}))
-    ]
-    initializer = InitializerApplicator.from_params(initializer_params)
-
-    # model
-    model = Model3(vocab=vocab,
-                   bert_model=bert_model,
-                   initializer=initializer,
-                   embedding_dropout=0.1)
-    model.cuda()
-    return model
-
-
 def make_model_and_optimizer(params, vocab, glove_path):
     if params.model == 1:
         model = make_model1(params, vocab, glove_path)
         optimizer = tf.optimizers.Adadelta(learning_rate=params.learning_rate,
                                            epsilon=params.epsilon,
                                            clipnorm=params.max_grad_norm)
+        num_params = 'not implemented'  # TODO
     elif params.model == 2:  # 9M parameters
         # pytorch implementation of He et al., 2017 from Allen NLP toolkit
         model = make_model2(params, vocab, glove_path)
         optimizer = torch.optim.Adadelta(params=model.parameters(),
                                          lr=params.learning_rate,
                                          eps=params.epsilon)
-        num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    elif params.model == 3:
-        # pytorch implementation of BERT_based SRL model
-        model = make_model3(vocab)
-        optimizer = BertAdam(params=model.parameters(),
-                             lr=5e-5,
-                             max_grad_norm=1.0,
-                             t_total=-1,
-                             weight_decay=0.01)
         num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     else:
         raise AttributeError('Invalid arg to model. Must be in [1, 2, 3]')
